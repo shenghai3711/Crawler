@@ -23,14 +23,11 @@ namespace HZ.Crawler.DataSpider
         public void Run()
         {
             string spiderName = this.GetType().Name.ToLower();
-            var list = this.Configuration.GetValue<List<SpiderConfig>>(nameof(SpiderConfig));
+            var list = this.Configuration.GetValue<SpiderConfig>(this.GetType().Name);
             //开始
-            foreach (var config in list.Where(s => s.Name.ToLower() == spiderName))
+            foreach (var host in list.Hosts)
             {
-                foreach (var host in config.Hosts)
-                {
-                    this.CrawleHost(host);
-                }
+                this.CrawleHost(host);
             }
             //结束
         }
@@ -62,21 +59,25 @@ namespace HZ.Crawler.DataSpider
         /// <summary>
         /// 保存数据
         /// </summary>
-        /// <typeparam name="T"></typeparam>
+        /// <param name="isSave"></param>
         /// <param name="ts"></param>
-        void SaveData<T>(params T[] ts) where T : BaseModel, new()
+        /// <typeparam name="T"></typeparam>
+        protected void SaveData<T>(bool isSave = true, params T[] ts) where T : BaseModel, new()
         {
             foreach (var t in ts)
             {
                 this.Context.AddAsync(t);
             }
-            this.Context.SaveChanges();
+            if (isSave)
+            {
+                this.Context.SaveChanges();
+            }
         }
         /// <summary>
         /// 解析失败的保存
         /// </summary>
         /// <param name="html"></param>
-        void SaveFile(string html)
+        protected void SaveFile(string html)
         {
             var dirName = "error";
             if (!Directory.Exists(dirName))

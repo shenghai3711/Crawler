@@ -11,7 +11,7 @@ namespace HZ.Crawler.Model.Shiweijia
         /// <summary>
         /// 品牌
         /// </summary>
-        public string Brand { get; set; }
+        public BrandModel Brand { get; set; }
         /// <summary>
         /// 风格
         /// </summary>
