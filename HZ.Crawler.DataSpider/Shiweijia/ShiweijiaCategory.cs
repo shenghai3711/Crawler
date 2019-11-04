@@ -62,8 +62,11 @@ namespace HZ.Crawler.DataSpider
                     {//TODO:请求失败
                         return string.Empty;
                     }
-                    var resultList = ParseItem(jsonElement.GetProperty("Data").EnumerateArray());
-                    base.SaveData(ts: resultList.ToArray());
+                    if (jsonElement.TryGetProperty("Data", out var elements))
+                    {
+                        var resultList = ParseItem(elements.EnumerateArray());
+                        base.SaveData(ts: resultList.ToArray());
+                    }
                 }
             }
             catch (System.Exception)
@@ -87,8 +90,10 @@ namespace HZ.Crawler.DataSpider
                     CategoryName = name,
                     CategoryImg = item.GetProperty("CategoryImg").GetString()
                 });
-                var childs = item.GetProperty("Subs").EnumerateArray();
-                list.AddRange(ParseItem(childs));
+                if (item.TryGetProperty("Subs", out var childs))
+                {
+                    list.AddRange(ParseItem(childs.EnumerateArray()));
+                }
             }
             return list;
         }

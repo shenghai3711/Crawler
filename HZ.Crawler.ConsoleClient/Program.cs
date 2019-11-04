@@ -23,9 +23,10 @@ namespace HZ.Crawler.ConsoleClient
             .Build(); //编译成对象
 
             var service = new ServiceCollection()
+            .AddOptions()
             .AddSingleton<IConfiguration>(config)//单例
             .AddTransient<ILoggerFactory, LoggerFactory>()
-            .AddTransient<DataContext,ShiweijiaContext>()
+            .AddTransient<DataContext, ShiweijiaContext>()
             .AddTransient<BaseSpider, ShiweijiaCategory>()
             .AddTransient<BaseSpider, ShiweijiaProduct>() //注入服务
             .BuildServiceProvider(); //编译

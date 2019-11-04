@@ -26,6 +26,11 @@ namespace HZ.Crawler.WebUI.Controllers
             return View();
         }
 
+        public IActionResult Category()
+        {
+            var categoryList = this._context.CategoryModels.OrderBy(c => c.UpdateDate);
+            return View(categoryList.ToArray());
+        }
 
         [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
         public IActionResult Error()

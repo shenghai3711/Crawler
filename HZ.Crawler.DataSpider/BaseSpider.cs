@@ -23,9 +23,11 @@ namespace HZ.Crawler.DataSpider
         public void Run()
         {
             string spiderName = this.GetType().Name.ToLower();
-            var list = this.Configuration.GetValue<SpiderConfig>(this.GetType().Name);
+            var config = new SpiderConfig();
+            this.Configuration.GetSection(this.GetType().Name).Bind(config);
+            //this.Configuration.GetValue<SpiderConfig>(this.GetType().Name);//反射不到数组
             //开始
-            foreach (var host in list.Hosts)
+            foreach (var host in config.Hosts)
             {
                 this.CrawleHost(host);
             }
