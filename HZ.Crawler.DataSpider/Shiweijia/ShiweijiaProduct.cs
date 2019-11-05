@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Text.Unicode;
 using HZ.Crawler.Common;
 using HZ.Crawler.Common.Extensions;
 using HZ.Crawler.Common.Net;
@@ -151,7 +152,6 @@ namespace HZ.Crawler.DataSpider
                     };
                     base.SaveData(isSave: false, ts: brand);
                     product.BrandId = brand.Id;
-                    product.FullDescription = dataElement.TryGetProperty("FullDescription", out var desElement) ? desElement.GetString() : string.Empty;
                     product.MainImgs = this.ArrayToJson(dataElement, "MainImgs");
                     //dataElement.TryGetProperty("MainImgs", out var mainImgsElement) ? mainImgsElement.GetString() : string.Empty;
                     product.DetailImgs = this.ArrayToJson(dataElement, "DetailImgs");
@@ -187,7 +187,7 @@ namespace HZ.Crawler.DataSpider
                     }
                 }
             }
-            return JsonSerializer.Serialize(dic);
+            return JsonSerializer.Serialize(dic, options: new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.Create(UnicodeRanges.All) });
         }
         /// <summary>
         /// 商品规格
@@ -214,7 +214,7 @@ namespace HZ.Crawler.DataSpider
                     ProductName = item.GetProperty("ProductName").GetString(),
                     SalePrice = item.GetProperty("SalePrice").GetDecimal(),
                     Thumbnails = item.TryGetProperty("Thumbnails", out var thumbnailsElement) ? thumbnailsElement.GetString() : string.Empty,
-                    Features = JsonSerializer.Serialize(featureList),
+                    Features = JsonSerializer.Serialize(featureList, options: new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.Create(UnicodeRanges.All) }),
                     ProductId = productId
                 });
             }
@@ -263,7 +263,7 @@ namespace HZ.Crawler.DataSpider
                          break;
                  }
              }
-             return JsonSerializer.Serialize(resultList);
+             return JsonSerializer.Serialize(resultList, options: new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.Create(UnicodeRanges.All) });
          };
     }
 }

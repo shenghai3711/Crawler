@@ -26,12 +26,5 @@ namespace HZ.Crawler.Data
         protected override void ModelCreating(ModelBuilder modelBuilder)
         {
         }
-        public override void CleanData()
-        {
-            var list = this.BrandModels.GroupBy(b => b.Id).Where(b => b.Count() > 1);
-
-            var disList = this.BrandModels.Distinct();
-
-        }
     }
 }

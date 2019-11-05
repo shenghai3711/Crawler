@@ -61,7 +61,5 @@ namespace HZ.Crawler.Data
             base.OnConfiguring(optionsBuilder);
         }
         public static readonly LoggerFactory LoggerFactory = new LoggerFactory(new[] { new DebugLoggerProvider() });
-        public virtual void CleanData()
-        { }
     }
 }

@@ -22,7 +22,6 @@ namespace HZ.Crawler.DataSpider
 
         public void Run()
         {
-            ClaenData();
             string spiderName = this.GetType().Name.ToLower();
             var config = new SpiderConfig();
             this.Configuration.GetSection(this.GetType().Name).Bind(config);
@@ -32,7 +31,6 @@ namespace HZ.Crawler.DataSpider
             {
                 this.CrawleHost(host);
             }
-            ClaenData();
             //结束
         }
         private void CrawleHost(string host)
@@ -70,16 +68,15 @@ namespace HZ.Crawler.DataSpider
         {
             foreach (var t in ts)
             {
-                this.Context.AddAsync(t);
+                if (this.Context.Find<T>(t.Id) == null)
+                {
+                    this.Context.AddAsync(t);
+                }
             }
             if (isSave)
             {
                 this.Context.SaveChangesAsync();
             }
-        }
-        protected void ClaenData()
-        {
-            this.Context.CleanData();
         }
         /// <summary>
         /// 解析失败的保存

@@ -9,15 +9,18 @@
     <div class="table-responsive">
         <table class="table table-striped table-bordered">
             <thead>
-                <tr><th>图片</th><th>编号</th><th>名称</th><th>更新时间</th></tr>
+                <tr><th>商品编号</th><th>编号</th><th>名称</th><th>风格</th><th>价格</th><th>规格</th><th>更新时间</th></tr>
             </thead>
             <tbody>
                 @foreach (var item in Model)
                 {
                     <tr>
-                        <td><img src="" /></td>
+                        <td>@item.ProductCode</td>
                         <td>@item.Id</td>
                         <td>@item.Name</td>
+                        <td>@item.Style</td>
+                        <td>@item.SalePrice</td>
+                        <td>@item.Specifications</td>
                         <td>@item.UpdateDate</td>
                     </tr>
                 }

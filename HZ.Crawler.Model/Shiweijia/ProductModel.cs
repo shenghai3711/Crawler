@@ -21,10 +21,6 @@ namespace HZ.Crawler.Model.Shiweijia
         /// </summary>
         public string Name { get; set; }
         /// <summary>
-        /// 描述
-        /// </summary>
-        public string FullDescription { get; set; }
-        /// <summary>
         /// 价格
         /// </summary>
         public decimal SalePrice { get; set; }
