@@ -1,4 +1,8 @@
-﻿namespace HZ.Crawler.Model.Shiweijia
+﻿using System;
+using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
+
+namespace HZ.Crawler.Model.Shiweijia
 {
     public class BrandModel : BaseModel
     {

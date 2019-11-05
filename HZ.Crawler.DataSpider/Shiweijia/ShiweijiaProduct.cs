@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using HZ.Crawler.Common;
@@ -76,19 +77,22 @@ namespace HZ.Crawler.DataSpider
                     {//TODO:请求失败
                         return string.Empty;
                     }
-                    var resultList = ParseItem(jsonElement.GetProperty("Data").GetProperty("Rows").EnumerateArray());
-                    base.SaveData(ts: resultList.ToArray());
-                    int pageIndex = jsonElement.GetProperty("Data").GetProperty("PageIndex").GetInt32();
-                    int total = jsonElement.GetProperty("Data").GetProperty("Total").GetInt32();
-                    int pageCount = Convert.ToInt32(Math.Ceiling(total / Convert.ToDouble(this._PageSize)));
-                    return pageIndex > pageCount ? string.Empty : (pageIndex + 1).ToString();
+                    if (jsonElement.TryGetProperty("Data", out var dataElement) && dataElement.TryGetProperty("Rows", out var rowElement))
+                    {
+                        var resultList = ParseItem(rowElement.EnumerateArray());
+                        base.SaveData(ts: resultList.ToArray());
+                        int pageIndex = dataElement.GetProperty("PageIndex").GetInt32();
+                        int total = dataElement.GetProperty("Total").GetInt32();
+                        int pageCount = Convert.ToInt32(Math.Ceiling(total / Convert.ToDouble(this._PageSize)));
+                        return pageIndex > pageCount ? string.Empty : (pageIndex + 1).ToString();
+                    }
                 }
             }
             catch (System.Exception)
             {//TODO:解析异常
                 base.SaveFile(html);
-                return string.Empty;
             }
+            return string.Empty;
         }
         List<Model.Shiweijia.ProductModel> ParseItem(JsonElement.ArrayEnumerator elements)
         {
@@ -101,9 +105,9 @@ namespace HZ.Crawler.DataSpider
                 {
                     Id = item.GetProperty("ID").GetInt32(),
                     ProductCode = item.GetProperty("ProductCode").GetString(),
-                    Name = item.GetProperty("Name").GetString(),
-                    Style = item.GetProperty("Pattern").GetString(),
-                    SalePrice = item.GetProperty("SalePrice").GetInt32()
+                    Name = item.TryGetProperty("Name", out var nameElement) ? nameElement.GetString() : string.Empty,
+                    Style = item.TryGetProperty("Pattern", out var patternElement) ? patternElement.GetString() : string.Empty,
+                    SalePrice = item.GetProperty("SalePrice").GetDecimal()
                 };
                 GetProductDetail(product);
                 list.Add(product);
@@ -133,22 +137,35 @@ namespace HZ.Crawler.DataSpider
             {
                 bool isSuccess = jsonDoc.RootElement.GetProperty("IsSuccess").GetBoolean();
                 if (!isSuccess)
-                {//TODO:请求失败
+                {//TODO:获取商品详情失败
                     return;
                 }
-                var dataElement = jsonDoc.RootElement.GetProperty("Data");
-                product.Brand = new Model.Shiweijia.BrandModel
+                if (jsonDoc.RootElement.TryGetProperty("Data", out var dataElement))
                 {
-                    Id = dataElement.GetProperty("BrandId").GetInt32(),
-                    Name = dataElement.GetProperty("Brand").GetString(),
-                    Logo = dataElement.GetProperty("BrandImg").GetString()
-                };
-                product.FullDescription = dataElement.GetProperty("FullDescription").GetString();
-                product.MainImgs = dataElement.GetProperty("MainImgs").GetString();
-                product.DetailImgs = dataElement.GetProperty("DetailImgs").GetString();
-                product.Specifications = GetSpecifications(dataElement.GetProperty("Paras").EnumerateArray());
-                var features = GetFeatures(dataElement.GetProperty("Specification").EnumerateArray());
-                product.ProductSpecifications = GetSpecificationModel(dataElement.GetProperty("ProductSpecifications").EnumerateArray(), features);
+                    //TODO:两个以上商品是用同一个品牌
+                    var brand = new Model.Shiweijia.BrandModel
+                    {
+                        Id = dataElement.GetProperty("BrandId").GetInt32(),
+                        Name = dataElement.GetProperty("Brand").GetString(),
+                        Logo = dataElement.GetProperty("BrandImg").GetString()
+                    };
+                    base.SaveData(isSave: false, ts: brand);
+                    product.BrandId = brand.Id;
+                    product.FullDescription = dataElement.TryGetProperty("FullDescription", out var desElement) ? desElement.GetString() : string.Empty;
+                    product.MainImgs = this.ArrayToJson(dataElement, "MainImgs");
+                    //dataElement.TryGetProperty("MainImgs", out var mainImgsElement) ? mainImgsElement.GetString() : string.Empty;
+                    product.DetailImgs = this.ArrayToJson(dataElement, "DetailImgs");
+                    //dataElement.TryGetProperty("DetailImgs", out var detailImgsElement) ? detailImgsElement.GetString() : string.Empty;
+                    if (dataElement.TryGetProperty("Paras", out var specificationsElement) && specificationsElement.ValueKind == JsonValueKind.Array)
+                    {
+                        product.Specifications = GetSpecifications(specificationsElement.EnumerateArray());
+                    }
+                    if (dataElement.TryGetProperty("Specification", out var featuresElement) && featuresElement.ValueKind == JsonValueKind.Array && dataElement.TryGetProperty("ProductSpecifications", out var psElement) && psElement.ValueKind == JsonValueKind.Array)
+                    {
+                        var features = GetFeatures(featuresElement.EnumerateArray());
+                        SaveSpecificationModel(psElement.EnumerateArray(), features, product.Id);
+                    }
+                }
             }
         }
         /// <summary>
@@ -162,39 +179,46 @@ namespace HZ.Crawler.DataSpider
             foreach (var item in elements)
             {
                 //item.GetProperty("GroupName").GetString();
-                foreach (var para in item.GetProperty("Paras").EnumerateArray())
+                if (item.TryGetProperty("Paras", out var parasElement) && parasElement.ValueKind == JsonValueKind.Array)
                 {
-                    dic.Add(para.GetProperty("Name").GetString(), para.GetProperty("ParameterValue").GetString());
+                    foreach (var para in parasElement.EnumerateArray())
+                    {
+                        dic.Add(para.GetProperty("Name").GetString(), para.GetProperty("ParameterValue").GetString());
+                    }
                 }
             }
             return JsonSerializer.Serialize(dic);
         }
         /// <summary>
-        /// 获取商品规格
+        /// 商品规格
         /// </summary>
         /// <param name="elements"></param>
         /// <param name="features"></param>
-        /// <returns></returns>
-        List<Model.Shiweijia.ProductSpecificationModel> GetSpecificationModel(JsonElement.ArrayEnumerator elements, Dictionary<int, string> features)
+        /// <param name="productId"></param>
+        void SaveSpecificationModel(JsonElement.ArrayEnumerator elements, Dictionary<int, string> features, int productId)
         {
             var list = new List<Model.Shiweijia.ProductSpecificationModel>();
             foreach (var item in elements)
             {
                 var featureList = new List<string>();
-                foreach (var value in item.GetProperty("SpecificationValueIds").EnumerateArray())
+                if (item.TryGetProperty("SpecificationValueIds", out var svIdElement) && svIdElement.ValueKind == JsonValueKind.Array)
                 {
-                    featureList.Add(features[value.GetInt32()]);
+                    foreach (var value in svIdElement.EnumerateArray())
+                    {
+                        featureList.Add(features[value.GetInt32()]);
+                    }
                 }
                 list.Add(new Model.Shiweijia.ProductSpecificationModel
                 {
                     Id = item.GetProperty("ProductId").GetInt32(),
                     ProductName = item.GetProperty("ProductName").GetString(),
-                    SalePrice = item.GetProperty("SalePrice").GetInt32(),
-                    Thumbnails = item.GetProperty("Thumbnails").GetString(),
-                    Features = JsonSerializer.Serialize(featureList)
+                    SalePrice = item.GetProperty("SalePrice").GetDecimal(),
+                    Thumbnails = item.TryGetProperty("Thumbnails", out var thumbnailsElement) ? thumbnailsElement.GetString() : string.Empty,
+                    Features = JsonSerializer.Serialize(featureList),
+                    ProductId = productId
                 });
             }
-            return list;
+            base.SaveData(isSave: false, ts: list.ToArray());
         }
         /// <summary>
         /// 获取商品特性
@@ -207,13 +231,39 @@ namespace HZ.Crawler.DataSpider
             foreach (var item in elements)
             {
                 //item.GetProperty("Name").GetString()
-                foreach (var value in item.GetProperty("Values").EnumerateArray())
+                if (item.TryGetProperty("Values", out var valuesElement) && valuesElement.ValueKind == JsonValueKind.Array)
                 {
-                    dic.Add(value.GetProperty("Id").GetInt32(), value.GetProperty("Name").GetString());
+                    foreach (var value in valuesElement.EnumerateArray())
+                    {
+                        dic.Add(value.GetProperty("Id").GetInt32(), value.GetProperty("Name").GetString());
+                    }
                 }
             }
             return dic;
         }
-
+        /// <summary>
+        /// 数组转json字符串
+        /// </summary>
+        /// <returns></returns>
+        Func<JsonElement, string, string> ArrayToJson = (element, tagName) =>
+         {
+             var resultList = new List<string>();
+             if (element.TryGetProperty(tagName, out var result))
+             {
+                 switch (result.ValueKind)
+                 {
+                     case JsonValueKind.Array:
+                         foreach (var item in result.EnumerateArray())
+                         {
+                             resultList.Add(item.GetString());
+                         }
+                         break;
+                     case JsonValueKind.Null:
+                     default:
+                         break;
+                 }
+             }
+             return JsonSerializer.Serialize(resultList);
+         };
     }
 }

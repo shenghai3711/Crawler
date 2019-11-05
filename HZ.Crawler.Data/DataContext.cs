@@ -33,12 +33,16 @@ namespace HZ.Crawler.Data
         }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
+            ModelCreating(modelBuilder);
             foreach (var item in modelBuilder.Model.GetEntityTypes())
             {
                 //modelBuilder.Entity(item.Name).Property("Id").ValueGeneratedNever();//不自动增长
                 modelBuilder.Entity(item.Name).ToTable($"T_" + item.ClrType.Name);
             }
             base.OnModelCreating(modelBuilder);
+        }
+        protected virtual void ModelCreating(ModelBuilder modelBuilder)
+        {
         }
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
@@ -57,6 +61,7 @@ namespace HZ.Crawler.Data
             base.OnConfiguring(optionsBuilder);
         }
         public static readonly LoggerFactory LoggerFactory = new LoggerFactory(new[] { new DebugLoggerProvider() });
-
+        public virtual void CleanData()
+        { }
     }
 }

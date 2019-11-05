@@ -1,8 +1,10 @@
-﻿using HZ.Crawler.Model.Shiweijia;
+﻿using HZ.Crawler.Model;
+using HZ.Crawler.Model.Shiweijia;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 namespace HZ.Crawler.Data
@@ -20,5 +22,16 @@ namespace HZ.Crawler.Data
         public DbSet<ProductModel> ProductModels { get; set; }
         public DbSet<ProductSpecificationModel> ProductSpecificationModels { get; set; }
         public DbSet<StyleModel> StyleModels { get; set; }
+
+        protected override void ModelCreating(ModelBuilder modelBuilder)
+        {
+        }
+        public override void CleanData()
+        {
+            var list = this.BrandModels.GroupBy(b => b.Id).Where(b => b.Count() > 1);
+
+            var disList = this.BrandModels.Distinct();
+
+        }
     }
 }

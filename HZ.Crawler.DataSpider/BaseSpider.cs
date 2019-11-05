@@ -22,6 +22,7 @@ namespace HZ.Crawler.DataSpider
 
         public void Run()
         {
+            ClaenData();
             string spiderName = this.GetType().Name.ToLower();
             var config = new SpiderConfig();
             this.Configuration.GetSection(this.GetType().Name).Bind(config);
@@ -31,6 +32,7 @@ namespace HZ.Crawler.DataSpider
             {
                 this.CrawleHost(host);
             }
+            ClaenData();
             //结束
         }
         private void CrawleHost(string host)
@@ -48,7 +50,7 @@ namespace HZ.Crawler.DataSpider
                 {
                     break;
                 }
-                System.Threading.Thread.Sleep(new Random().Next(1000, 5000));
+                System.Threading.Thread.Sleep(new Random().Next(30000, 60000));
             } while (true);
         }
         protected abstract string LoadHTML(string url);
@@ -72,8 +74,12 @@ namespace HZ.Crawler.DataSpider
             }
             if (isSave)
             {
-                this.Context.SaveChanges();
+                this.Context.SaveChangesAsync();
             }
+        }
+        protected void ClaenData()
+        {
+            this.Context.CleanData();
         }
         /// <summary>
         /// 解析失败的保存
@@ -86,7 +92,7 @@ namespace HZ.Crawler.DataSpider
             {
                 Directory.CreateDirectory(dirName);
             }
-            FileHelper.Write($"{dirName}/{this.GetType().Name.ToLower()}-{DateTime.Now.ToString("MMddHHmmss")}.txt", html);
+            FileHelper.Write($"{dirName}/{this.GetType().Name.ToLower()}-{DateTime.Now.ToString("MMddHHmmssfff")}-{Guid.NewGuid().ToString("N").Substring(0, 4)}.txt", html);
         }
 
     }

@@ -26,6 +26,12 @@ namespace HZ.Crawler.WebUI.Controllers
             return View();
         }
 
+        public IActionResult Product()
+        {
+            var productList = this._context.ProductModels.OrderBy(p => p.UpdateDate);
+            return View(productList.ToArray());
+        }
+
         public IActionResult Category()
         {
             var categoryList = this._context.CategoryModels.OrderBy(c => c.UpdateDate);
