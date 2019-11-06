@@ -99,7 +99,7 @@ namespace HZ.Crawler.DataSpider
         {
             //TODO:判断是否为空
             var list = new List<Model.Shiweijia.ProductModel>();
-            foreach (var item in elements)
+            foreach (var item in elements)//每一页
             {
                 //还需要加载商品详情
                 var product = new Model.Shiweijia.ProductModel
@@ -110,7 +110,7 @@ namespace HZ.Crawler.DataSpider
                     Style = item.TryGetProperty("Pattern", out var patternElement) ? patternElement.GetString() : string.Empty,
                     SalePrice = item.GetProperty("SalePrice").GetDecimal()
                 };
-                GetProductDetail(product);
+                GetProductDetail(item.GetProperty("ID").GetInt32());
                 list.Add(product);
             }
             return list;
@@ -118,11 +118,10 @@ namespace HZ.Crawler.DataSpider
         /// <summary>
         /// 获取商品详情
         /// </summary>
-        /// <param name="product"></param>
-        void GetProductDetail(Model.Shiweijia.ProductModel product)
+        Model.Shiweijia.ProductModel GetProductDetail(int productId, int? brandId = null)
         {
             string reqTime = DateTime.Now.GetMilliseconds().ToString();
-            string sign = Encrypt.ToMd5($"Id={product.Id}&Nonce={this._Nonce}&ReqTime={reqTime}&TerminalType=web&TerminalVersion=lenovo", Encoding.UTF8);
+            string sign = Encrypt.ToMd5($"Id={productId}&Nonce={this._Nonce}&ReqTime={reqTime}&TerminalType=web&TerminalVersion=lenovo", Encoding.UTF8);
             string data = JsonSerializer.Serialize(new
             {
                 ReqTime = reqTime,
@@ -130,7 +129,7 @@ namespace HZ.Crawler.DataSpider
                 Signature = sign,
                 TerminalType = "web",
                 TerminalVersion = "lenovo",
-                Id = product.Id,
+                Id = productId,
                 UserId = ""
             });
             string result = this.Client.Request(this._ProductDetailUrl, HttpMethod.POST, data, Encoding.UTF8, "application/json;charset=UTF-8");
@@ -139,23 +138,33 @@ namespace HZ.Crawler.DataSpider
                 bool isSuccess = jsonDoc.RootElement.GetProperty("IsSuccess").GetBoolean();
                 if (!isSuccess)
                 {//TODO:获取商品详情失败
-                    return;
+                    return null;
                 }
                 if (jsonDoc.RootElement.TryGetProperty("Data", out var dataElement))
                 {
-                    //TODO:两个以上商品是用同一个品牌
-                    var brand = new Model.Shiweijia.BrandModel
+                    if (!brandId.HasValue)
                     {
-                        Id = dataElement.GetProperty("BrandId").GetInt32(),
-                        Name = dataElement.GetProperty("Brand").GetString(),
-                        Logo = dataElement.GetProperty("BrandImg").GetString()
+                        #region 品牌保存
+                        var brand = new Model.Shiweijia.BrandModel
+                        {
+                            Id = dataElement.GetProperty("BrandId").GetInt32(),
+                            Name = dataElement.GetProperty("Brand").GetString(),
+                            Logo = dataElement.GetProperty("BrandImg").GetString()
+                        };
+                        base.SaveData(isSave: false, ts: brand);
+                        #endregion
+                        brandId = brand.Id;
+                    }
+                    var product = new Model.Shiweijia.ProductModel
+                    {
+                        BrandId = brandId.Value,
+                        MainImgs = this.ArrayToJson(dataElement, "MainImgs"),
+                        DetailImgs = this.ArrayToJson(dataElement, "DetailImgs"),
+                        ProductCode = dataElement.GetProperty("ProductCode").GetString(),
+                        Name = dataElement.TryGetProperty("Name", out var nameElement) ? nameElement.GetString() : string.Empty,
+                        Style = dataElement.TryGetProperty("Pattern", out var patternElement) ? patternElement.GetString() : string.Empty,
+                        SalePrice = dataElement.GetProperty("SalePrice").GetDecimal()
                     };
-                    base.SaveData(isSave: false, ts: brand);
-                    product.BrandId = brand.Id;
-                    product.MainImgs = this.ArrayToJson(dataElement, "MainImgs");
-                    //dataElement.TryGetProperty("MainImgs", out var mainImgsElement) ? mainImgsElement.GetString() : string.Empty;
-                    product.DetailImgs = this.ArrayToJson(dataElement, "DetailImgs");
-                    //dataElement.TryGetProperty("DetailImgs", out var detailImgsElement) ? detailImgsElement.GetString() : string.Empty;
                     if (dataElement.TryGetProperty("Paras", out var specificationsElement) && specificationsElement.ValueKind == JsonValueKind.Array)
                     {
                         product.Specifications = GetSpecifications(specificationsElement.EnumerateArray());
@@ -165,8 +174,10 @@ namespace HZ.Crawler.DataSpider
                         var features = GetFeatures(featuresElement.EnumerateArray());
                         SaveSpecificationModel(psElement.EnumerateArray(), features, product.Id);
                     }
+                    return product;
                 }
             }
+            return null;
         }
         /// <summary>
         /// 获取商品规格参数

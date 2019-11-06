@@ -35,6 +35,7 @@ namespace HZ.Crawler.ConsoleClient
             {
                 spider.Run();
             }
+            System.Console.WriteLine("抓取完成");
         }
     }
 }
