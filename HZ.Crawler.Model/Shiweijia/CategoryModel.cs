@@ -4,5 +4,6 @@
     {
         public string CategoryName { get; set; }
         public string CategoryImg { get; set; }
+        public int? ParentId { get; set; }
     }
 }

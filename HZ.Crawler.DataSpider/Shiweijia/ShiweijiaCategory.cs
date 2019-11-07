@@ -27,7 +27,7 @@ namespace HZ.Crawler.DataSpider
         }
 
         private string _Nonce = Guid.NewGuid().ToString("N").Substring(0, 11);
-        protected override string LoadHTML(string url)
+        protected override string LoadHTML(string url, string param = null)
         {
             try
             {
@@ -50,7 +50,7 @@ namespace HZ.Crawler.DataSpider
             }
         }
 
-        protected override string ParseSave(string html)
+        protected override string ParseSave(string html, string param = null)
         {
             try
             {
@@ -64,7 +64,7 @@ namespace HZ.Crawler.DataSpider
                     }
                     if (jsonElement.TryGetProperty("Data", out var elements))
                     {
-                        var resultList = ParseItem(elements.EnumerateArray());
+                        var resultList = ParseItem(elements.EnumerateArray(), null);
                         base.SaveData(ts: resultList.ToArray());
                     }
                 }
@@ -76,7 +76,7 @@ namespace HZ.Crawler.DataSpider
             return string.Empty;
         }
 
-        List<Model.Shiweijia.CategoryModel> ParseItem(JsonElement.ArrayEnumerator elements)
+        List<Model.Shiweijia.CategoryModel> ParseItem(JsonElement.ArrayEnumerator elements, int? parentId)
         {
             //TODO:判断是否为空
             var list = new List<Model.Shiweijia.CategoryModel>();
@@ -88,11 +88,12 @@ namespace HZ.Crawler.DataSpider
                 {
                     Id = id,
                     CategoryName = name,
-                    CategoryImg = item.GetProperty("CategoryImg").GetString()
+                    CategoryImg = item.GetProperty("CategoryImg").GetString(),
+                    ParentId = parentId
                 });
                 if (item.TryGetProperty("Subs", out var childs))
                 {
-                    list.AddRange(ParseItem(childs.EnumerateArray()));
+                    list.AddRange(ParseItem(childs.EnumerateArray(), id));
                 }
             }
             return list;

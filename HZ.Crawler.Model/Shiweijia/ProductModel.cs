@@ -9,9 +9,18 @@ namespace HZ.Crawler.Model.Shiweijia
         /// </summary>
         public string ProductCode { get; set; }
         /// <summary>
-        /// 品牌
+        /// 品牌名称
         /// </summary>
-        public int BrandId { get; set; }
+        public string BrandName { get; set; }
+        /// <summary>
+        /// 品牌封面
+        /// </summary>
+        public string BrandImg { get; set; }
+        /// <summary>
+        /// 类别
+        /// </summary>
+        /// <value></value>
+        public int CategoryId { get; set; }
         /// <summary>
         /// 风格
         /// </summary>
@@ -36,5 +45,10 @@ namespace HZ.Crawler.Model.Shiweijia
         /// 规格参数(Dictionary<string, string>)
         /// </summary>
         public string Specifications { get; set; }
+        public string Thumbnails { get; set; }
+        /// <summary>
+        /// 特性(List<string>)
+        /// </summary>
+        public string Features { get; set; }
     }
 }
