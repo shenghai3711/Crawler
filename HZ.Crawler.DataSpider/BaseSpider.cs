@@ -1,8 +1,10 @@
 ﻿using HZ.Crawler.Common;
+using HZ.Crawler.Common.Extensions;
 using HZ.Crawler.Common.Net;
 using HZ.Crawler.Data;
 using HZ.Crawler.Model;
 using Microsoft.Extensions.Configuration;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -17,11 +19,13 @@ namespace HZ.Crawler.DataSpider
         private DataContext Context { get; }
         private IConfiguration Configuration { get; }
         private string ImportMaterialHost { get; }
+        private string MerchantID { get; }
         public BaseSpider(IConfiguration configuration, DataContext context)
         {
             this.Configuration = configuration;
             this.Context = context;
             this.ImportMaterialHost = configuration.GetValue(nameof(this.ImportMaterialHost), string.Empty);
+            this.MerchantID = configuration.GetValue(nameof(this.MerchantID), string.Empty);
         }
 
         public void Run()
@@ -29,12 +33,12 @@ namespace HZ.Crawler.DataSpider
             var config = new SpiderConfig();
             this.Configuration.GetSection(this.GetType().Name).Bind(config);
             //this.Configuration.GetValue<SpiderConfig>(this.GetType().Name);//反射不到数组
-            //开始
+            System.Console.WriteLine($"开始采集{config.Name}");
             foreach (var host in config.Hosts)
             {
                 this.CrawleHost(host);
             }
-            //结束
+            System.Console.WriteLine($"{config.Name}采集结束");
         }
         private void CrawleHost(string host)
         {
@@ -103,15 +107,57 @@ namespace HZ.Crawler.DataSpider
             }
             FileHelper.Write($"{dirName}/{this.GetType().Name.ToLower()}-{DateTime.Now.ToString("MMddHHmmssfff")}-{Guid.NewGuid().ToString("N").Substring(0, 4)}.txt", html);
         }
-
+        /// <summary>
+        /// 提交产品
+        /// </summary>
+        /// <param name="dataDic"></param>
+        /// <returns></returns>
         protected bool SubmitProduct(Dictionary<string, string> dataDic)
         {
             var client = HttpClientFactory.Create();
             dataDic.Add("action", "addPlatformMaterial");
+            dataDic.Add("merchantID", this.MerchantID);
             string data = string.Join("&", dataDic.Select(d => $"{d.Key}={d.Value}"));
-            string result = client.Request(this.ImportMaterialHost, HttpMethod.POST, data, Encoding.UTF8);
+            string url = $"{this.ImportMaterialHost}?{data}";
+            string result = client.Request(this.ImportMaterialHost, HttpMethod.POST, data, Encoding.UTF8, "application/x-www-form-urlencoded");
             var json = JsonDocument.Parse(result);
-            return json.RootElement.GetProperty("OK").GetBoolean();
+            if (json.RootElement.GetProperty("OK").GetBoolean())
+            {
+                System.Console.WriteLine($"{dataDic["productID"]}-{dataDic["productCode"]} 提交成功！");
+                return true;
+            }
+            System.Console.WriteLine($"{dataDic["productID"]}-{dataDic["productCode"]} 提交失败！");
+            return false;
+        }
+        /// <summary>
+        /// 上传图片
+        /// </summary>
+        /// <param name="paths"></param>
+        /// <returns></returns>
+        protected List<string> UploadImgs(params string[] paths)
+        {
+            var imgList = new List<string>();
+            if (paths == null || paths.Length == 0)
+            {
+                return imgList;
+            }
+            var client = HttpClientFactory.Create();
+            var base64List = new List<string>();
+            foreach (var item in paths)
+            {//图片转base64
+                string ext = item.Substring(item.LastIndexOf("."));
+                string base64Str = Convert.ToBase64String(FileHelper.ReadToBytes(item));
+                base64List.Add($"data:image/{ext};base64,{base64Str}");
+            }
+            string postData = Newtonsoft.Json.JsonConvert.SerializeObject(base64List);
+            string url = $"{this.ImportMaterialHost}?action=upfileImages&merchantID={this.MerchantID}";
+            string result = client.Request(url, HttpMethod.POST, postData, Encoding.UTF8);
+            var root = JToken.Parse(result);
+            if (root.Value<bool>("OK"))
+            {
+                imgList.AddRange(root.Value<List<string>>("Message"));
+            }
+            return imgList;
         }
     }
 }

@@ -1,9 +1,11 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Text.Unicode;
+using System.Threading.Tasks;
 using HZ.Crawler.Common;
 using HZ.Crawler.Common.Extensions;
 using HZ.Crawler.Common.Net;
@@ -51,6 +53,7 @@ namespace HZ.Crawler.DataSpider
                     pageIndex = 1;
                 }
                 string category = param;
+                System.Console.WriteLine($"{this.CategoryList.FirstOrDefault(c => c.Id.ToString() == category).CategoryName} 正在采集第{pageIndex}页");
                 string reqTime = DateTime.Now.GetMilliseconds().ToString();
                 string sign = Encrypt.ToMd5($"Category={category}&MaxPrice=0&MinPrice=0&Nonce={this._Nonce}&OrderType=0&PageIndex={pageIndex}&PageSize={this._PageSize}&ReqTime={reqTime}&TerminalType=web&TerminalVersion=lenovo", Encoding.UTF8).ToUpper();
                 string postData = JsonSerializer.Serialize(new
@@ -74,7 +77,7 @@ namespace HZ.Crawler.DataSpider
                 string result = this.Client.Request(this._ProductUrl, HttpMethod.POST, postData, Encoding.UTF8, "application/json;charset=UTF-8");
                 return result;
             }
-            catch (System.Exception)
+            catch (System.Exception ex)
             {//TODO:加载异常
                 return string.Empty;
             }
@@ -231,19 +234,22 @@ namespace HZ.Crawler.DataSpider
             var dic = new Dictionary<string, string>();
             foreach (var item in elements)
             {
-                //item.GetProperty("GroupName").GetString();
                 if (item.TryGetProperty("Paras", out var parasElement) && parasElement.ValueKind == JsonValueKind.Array)
                 {
                     foreach (var para in parasElement.EnumerateArray())
                     {
-                        dic.Add(para.GetProperty("Name").GetString(), para.GetProperty("ParameterValue").GetString());
+                        string value = para.GetProperty("ParameterValue").GetString();
+                        if (!string.IsNullOrEmpty(value))
+                        {
+                            dic.Add(para.GetProperty("Name").GetString(), value);
+                        }
                     }
                 }
             }
             return Newtonsoft.Json.JsonConvert.SerializeObject(dic);
         }
 
-        List<int> GetAllProducts(JsonElement.ArrayEnumerator elements, Dictionary<int, string> features, Model.Shiweijia.ProductModel product)
+        List<int> GetAllProducts(JsonElement.ArrayEnumerator elements, Dictionary<string, Dictionary<int, string>> features, Model.Shiweijia.ProductModel product)
         {
             var list = new List<int>();
             foreach (var item in elements)
@@ -251,16 +257,20 @@ namespace HZ.Crawler.DataSpider
                 int productId = item.GetProperty("ProductId").GetInt32();
                 if (productId == product.Id)
                 {
-                    var featureList = new List<string>();
+                    var featureDic = new Dictionary<string, string>();
                     if (item.TryGetProperty("SpecificationValueIds", out var svIdElement) && svIdElement.ValueKind == JsonValueKind.Array)
                     {
                         foreach (var value in svIdElement.EnumerateArray())
                         {
-                            featureList.Add(features[value.GetInt32()]);
+                            int id = value.GetInt32();
+                            var feature = features.FirstOrDefault(f => f.Value.Keys.Any(k => k == id));
+                            if (featureDic.Keys.Any(k => k == feature.Key)) continue;
+                            featureDic.Add(feature.Key, feature.Value[id]);
                         }
                     }
                     product.Thumbnails = item.TryGetProperty("Thumbnails", out var thumbnailsElement) ? thumbnailsElement.GetString() : string.Empty;
-                    product.Features = JsonSerializer.Serialize(featureList, options: new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.Create(UnicodeRanges.All) });
+                    product.Features = Newtonsoft.Json.JsonConvert.SerializeObject(featureDic);
+                    //JsonSerializer.Serialize(featureList, options: new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.Create(UnicodeRanges.All) });
                 }
                 list.Add(productId);
             }
@@ -271,18 +281,19 @@ namespace HZ.Crawler.DataSpider
         /// </summary>
         /// <param name="elements"></param>
         /// <returns></returns>
-        Dictionary<int, string> GetFeatures(JsonElement.ArrayEnumerator elements)
+        Dictionary<string, Dictionary<int, string>> GetFeatures(JsonElement.ArrayEnumerator elements)
         {
-            var dic = new Dictionary<int, string>();
+            var dic = new Dictionary<string, Dictionary<int, string>>();
             foreach (var item in elements)
             {
-                //item.GetProperty("Name").GetString()
                 if (item.TryGetProperty("Values", out var valuesElement) && valuesElement.ValueKind == JsonValueKind.Array)
                 {
+                    var values = new Dictionary<int, string>();
                     foreach (var value in valuesElement.EnumerateArray())
                     {
-                        dic.Add(value.GetProperty("Id").GetInt32(), value.GetProperty("Name").GetString());
+                        values.Add(value.GetProperty("Id").GetInt32(), value.GetProperty("Name").GetString());
                     }
+                    dic.Add(item.GetProperty("Name").GetString(), values);
                 }
             }
             return dic;
@@ -314,39 +325,85 @@ namespace HZ.Crawler.DataSpider
 
         void ImportMaterial(Model.Shiweijia.ProductModel product)
         {
-            var childCategory = this.CategoryList.FirstOrDefault(c => c.Id == product.CategoryId);
-            var category = this.CategoryList.FirstOrDefault(c => c.Id == childCategory.ParentId);
-            var dataDic = new Dictionary<string, string>
+            Task.Factory.StartNew(() =>
             {
-                {"platformType","1"},
-                {"materialTypeID","1"},
-                {"typeID","3"},
-                {"productCode",product.ProductCode},
-                {"productID",product.Id.ToString()},
-                {"materialName",product.Name},
-                {"categoryName",category.CategoryName},
-                {"categoryCoverPath",category.CategoryImg},
-                {"mincategoryName",childCategory.CategoryName},
-                {"mincategoryCoverPath",childCategory.CategoryImg},
-                {"brandName",product.BrandName},
-                {"brandCoverPath",product.BrandImg},
-                {"saleprice",product.SalePrice.ToString()},
-                {"Attribute",GetProductAttributeJson(product.Specifications)},//属性json
-                {"coverPath",product.Thumbnails},
-                {"materialPicture",""},//产品多图json
-                {"materialDetails",""}//产品介绍
-            };
-            base.SubmitProduct(dataDic);
+                System.Console.WriteLine($"开始提交{product.Id}-{product.ProductCode}");
+                var childCategory = this.CategoryList.FirstOrDefault(c => c.Id == product.CategoryId);
+                var category = this.CategoryList.FirstOrDefault(c => c.Id == childCategory.ParentId);
+                string cover = GetImgStr(product.ProductCode, "缩略图").FirstOrDefault();
+                string pics = Newtonsoft.Json.JsonConvert.SerializeObject(GetImgStr(product.ProductCode, "详情图"));
+                var dataDic = new Dictionary<string, string>
+                {
+                    {"platformType","1"},
+                    {"materialTypeID","5"},
+                    {"typeID","3"},//固定
+                    {"productCode",product.ProductCode},
+                    {"productID",product.Id.ToString()},
+                    {"materialName",product.Name},
+                    {"categoryName",category.CategoryName},
+                    {"categoryCoverPath",category.CategoryImg},
+                    {"mincategoryName",childCategory.CategoryName},
+                    {"mincategoryCoverPath",childCategory.CategoryImg},
+                    {"brandName",product.BrandName},
+                    {"brandCoverPath",product.BrandImg},
+                    {"saleprice",product.SalePrice.ToString()},
+                    {"Attribute",GetProductAttributeJson(product.Features)},//属性json
+                    {"coverPath",cover??product.Thumbnails},
+                    {"materialPicture",pics},//产品多图json
+                    {"materialDetails",GetProductDetails(product)}//产品介绍
+                };
+                base.SubmitProduct(dataDic);
+            });
+        }
+        string GetProductDetails(Model.Shiweijia.ProductModel product)
+        {
+            var details = new StringBuilder();
+            #region 文字描述
+            try
+            {
+                var dic = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, string>>(product.Specifications);
+                foreach (var item in dic)
+                {
+                    details.Append($"<p>{item.Key}:{item.Value}</p>");
+                }
+            }
+            catch (System.Exception)
+            {
+            }
+            #endregion
+            foreach (var item in GetImgStr(product.ProductCode, "详情图"))
+            {
+                details.Append($"<img src=\"{item}\" />");
+            }
+            return details.ToString();
+        }
+        List<string> GetImgStr(string productCode, string folderName)
+        {
+            //指定文件夹(可以配置)
+            string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ProductPic", productCode, folderName);
+            //读取文件--->上传
+            if (!Directory.Exists(path))
+            {
+                return new List<string>();
+            }
+            return base.UploadImgs(FileHelper.GetAllFiles(path).ToArray());
         }
         string GetProductAttributeJson(string json)
         {
-            var dic = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, string>>(json);
-            var attributes = dic.Where(a => !string.IsNullOrEmpty(a.Value)).Select(a => new
+            try
             {
-                AttributeName = a.Key,
-                AttributeValue = a.Value
-            });
-            return Newtonsoft.Json.JsonConvert.SerializeObject(attributes);
+                var dic = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, string>>(json);
+                var attributes = dic.Where(a => !string.IsNullOrEmpty(a.Value)).Select(a => new
+                {
+                    AttributeName = a.Key,
+                    AttributeValue = a.Value
+                });
+                return Newtonsoft.Json.JsonConvert.SerializeObject(attributes);
+            }
+            catch (System.Exception)
+            {
+            }
+            return string.Empty;
         }
     }
 }

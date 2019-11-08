@@ -47,7 +47,7 @@ namespace HZ.Crawler.Model.Shiweijia
         public string Specifications { get; set; }
         public string Thumbnails { get; set; }
         /// <summary>
-        /// 特性(List<string>)
+        /// 特性(Dictionary<string, string>)
         /// </summary>
         public string Features { get; set; }
     }
