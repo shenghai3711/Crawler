@@ -77,7 +77,7 @@ namespace HZ.Crawler.DataSpider
                 string result = this.Client.Request(this._ProductUrl, HttpMethod.POST, postData, Encoding.UTF8, "application/json;charset=UTF-8");
                 return result;
             }
-            catch (System.Exception ex)
+            catch (System.Exception)
             {//TODO:加载异常
                 return string.Empty;
             }
@@ -125,13 +125,13 @@ namespace HZ.Crawler.DataSpider
                     var products = GetAllProductDetail(item.GetProperty("ID").GetInt32(), categoryId);
                     list.AddRange(products);
                 }
-                catch (System.Exception)
+                catch (System.Exception ex)
                 {
+                    System.Console.WriteLine(ex.Message);
                 }
             }
             return list;
         }
-        private List<int> _OtherProductIds = new List<int>();
         /// <summary>
         /// 获取所有规格商品详情
         /// </summary>
@@ -139,33 +139,33 @@ namespace HZ.Crawler.DataSpider
         {
             var products = new List<Model.Shiweijia.ProductModel>();
             string nonce = Guid.NewGuid().ToString("N").Substring(0, 11);
+            var allProductIds = new List<int>();
             do
             {
                 try
                 {
-                    var product = GetProductDetail(productId, nonce);
+                    var product = GetProductDetail(productId, nonce, ref allProductIds);
                     if (product == null)
                     {
                         break;
                     }
                     product.CategoryId = categoryId;
                     products.Add(product);
-                    this.ImportMaterial(product);
+                    //this.ImportMaterial(product);
                 }
                 catch (System.Exception)
-                {
-                }
-                if (this._OtherProductIds == null || this._OtherProductIds.Count <= 1)
+                { }
+                if (allProductIds == null)
                 {
                     break;
                 }
-                productId = this._OtherProductIds.FirstOrDefault(pid => !products.Any(p => p.Id == pid));
+                productId = allProductIds.FirstOrDefault(pid => !products.Any(p => p.Id == pid));
                 System.Threading.Thread.Sleep(new Random().Next(1000, 3000));
             } while (productId != 0);
             return products;
         }
 
-        Model.Shiweijia.ProductModel GetProductDetail(int productId, string nonce)
+        Model.Shiweijia.ProductModel GetProductDetail(int productId, string nonce, ref List<int> allProductIds)
         {
             var otherIds = new List<int>();
             string result = GetProductDetailJson(productId, nonce);
@@ -178,7 +178,7 @@ namespace HZ.Crawler.DataSpider
                 }
                 if (jsonDoc.RootElement.TryGetProperty("Data", out var dataElement))
                 {
-                    return ParseProduct(dataElement);
+                    return ParseProduct(dataElement, ref allProductIds);
                 }
             }
             return null;
@@ -199,7 +199,7 @@ namespace HZ.Crawler.DataSpider
             });
             return this.Client.Request(this._ProductDetailUrl, HttpMethod.POST, data, Encoding.UTF8, "application/json;charset=UTF-8");
         }
-        Model.Shiweijia.ProductModel ParseProduct(JsonElement dataElement)
+        Model.Shiweijia.ProductModel ParseProduct(JsonElement dataElement, ref List<int> allProductIds)
         {
             var product = new Model.Shiweijia.ProductModel
             {
@@ -220,7 +220,7 @@ namespace HZ.Crawler.DataSpider
             if (dataElement.TryGetProperty("Specification", out var featuresElement) && featuresElement.ValueKind == JsonValueKind.Array && dataElement.TryGetProperty("ProductSpecifications", out var psElement) && psElement.ValueKind == JsonValueKind.Array)
             {
                 var features = GetFeatures(featuresElement.EnumerateArray());
-                this._OtherProductIds = GetAllProducts(psElement.EnumerateArray(), features, product);
+                allProductIds = GetAllProducts(psElement.EnumerateArray(), features, product);
             }
             return product;
         }
@@ -325,14 +325,12 @@ namespace HZ.Crawler.DataSpider
 
         void ImportMaterial(Model.Shiweijia.ProductModel product)
         {
-            Task.Factory.StartNew(() =>
-            {
-                System.Console.WriteLine($"开始提交{product.Id}-{product.ProductCode}");
-                var childCategory = this.CategoryList.FirstOrDefault(c => c.Id == product.CategoryId);
-                var category = this.CategoryList.FirstOrDefault(c => c.Id == childCategory.ParentId);
-                string cover = GetImgStr(product.ProductCode, "缩略图").FirstOrDefault();
-                string pics = Newtonsoft.Json.JsonConvert.SerializeObject(GetImgStr(product.ProductCode, "详情图"));
-                var dataDic = new Dictionary<string, string>
+            System.Console.WriteLine($"开始提交{product.Id}-{product.ProductCode}");
+            var childCategory = this.CategoryList.FirstOrDefault(c => c.Id == product.CategoryId);
+            var category = this.CategoryList.FirstOrDefault(c => c.Id == childCategory.ParentId);
+            string cover = GetImgStr(product.ProductCode, "缩略图").FirstOrDefault();
+            string pics = Newtonsoft.Json.JsonConvert.SerializeObject(GetImgStr(product.ProductCode, "详情图"));
+            var dataDic = new Dictionary<string, string>
                 {
                     {"platformType","1"},
                     {"materialTypeID","5"},
@@ -352,8 +350,7 @@ namespace HZ.Crawler.DataSpider
                     {"materialPicture",pics},//产品多图json
                     {"materialDetails",GetProductDetails(product)}//产品介绍
                 };
-                base.SubmitProduct(dataDic);
-            });
+            base.SubmitProduct(dataDic);
         }
         string GetProductDetails(Model.Shiweijia.ProductModel product)
         {
@@ -390,6 +387,10 @@ namespace HZ.Crawler.DataSpider
         }
         string GetProductAttributeJson(string json)
         {
+            if (string.IsNullOrEmpty(json))
+            {
+                return string.Empty;
+            }
             try
             {
                 var dic = Newtonsoft.Json.JsonConvert.DeserializeObject<Dictionary<string, string>>(json);
@@ -401,8 +402,7 @@ namespace HZ.Crawler.DataSpider
                 return Newtonsoft.Json.JsonConvert.SerializeObject(attributes);
             }
             catch (System.Exception)
-            {
-            }
+            { }
             return string.Empty;
         }
     }

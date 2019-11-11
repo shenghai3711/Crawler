@@ -11,6 +11,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace HZ.Crawler.DataSpider
 {
@@ -20,12 +21,14 @@ namespace HZ.Crawler.DataSpider
         private IConfiguration Configuration { get; }
         private string ImportMaterialHost { get; }
         private string MerchantID { get; }
+        private int ThreadCount { get; }
         public BaseSpider(IConfiguration configuration, DataContext context)
         {
             this.Configuration = configuration;
             this.Context = context;
             this.ImportMaterialHost = configuration.GetValue(nameof(this.ImportMaterialHost), string.Empty);
             this.MerchantID = configuration.GetValue(nameof(this.MerchantID), string.Empty);
+            this.ThreadCount = configuration.GetValue(nameof(this.ThreadCount), 5);
         }
 
         public void Run()
@@ -43,23 +46,37 @@ namespace HZ.Crawler.DataSpider
         private void CrawleHost(string host)
         {
             string url = host;
+            var taskList = new List<Task>();
             foreach (var item in this.InitSpider())
             {
-                do
+                if (taskList.Count >= this.ThreadCount)//线程数量达到
                 {
-                    string html = this.LoadHTML(url, item);
-                    if (string.IsNullOrEmpty(html))
-                    {
-                        break;
-                    }
-                    url = this.ParseSave(html, item);
-                    if (string.IsNullOrEmpty(url))
-                    {
-                        break;
-                    }
-                    System.Threading.Thread.Sleep(new Random().Next(3000, 6000));
-                } while (true);
+                    taskList = taskList.Where(t => !t.IsCanceled && !t.IsCompleted && !t.IsFaulted).ToList();
+                    Task.WaitAny(taskList.ToArray());//等待完成一个
+                }
+                else
+                    Task.Delay(500);
+                string temp = item;
+                taskList.Add(Task.Factory.StartNew(() => TaskRun(url, temp)));
             }
+            Task.WaitAll(taskList.ToArray());//等待所有完成
+        }
+        private void TaskRun(string url, string param)
+        {
+            do
+            {
+                string html = this.LoadHTML(url, param);
+                if (string.IsNullOrEmpty(html))
+                {
+                    break;
+                }
+                url = this.ParseSave(html, param);
+                if (string.IsNullOrEmpty(url))
+                {
+                    break;
+                }
+                System.Threading.Thread.Sleep(new Random().Next(3000, 6000));
+            } while (true);
         }
         protected virtual List<string> InitSpider()
         {
@@ -118,7 +135,6 @@ namespace HZ.Crawler.DataSpider
             dataDic.Add("action", "addPlatformMaterial");
             dataDic.Add("merchantID", this.MerchantID);
             string data = string.Join("&", dataDic.Select(d => $"{d.Key}={d.Value}"));
-            string url = $"{this.ImportMaterialHost}?{data}";
             string result = client.Request(this.ImportMaterialHost, HttpMethod.POST, data, Encoding.UTF8, "application/x-www-form-urlencoded");
             var json = JsonDocument.Parse(result);
             if (json.RootElement.GetProperty("OK").GetBoolean())
@@ -145,17 +161,22 @@ namespace HZ.Crawler.DataSpider
             var base64List = new List<string>();
             foreach (var item in paths)
             {//图片转base64
-                string ext = item.Substring(item.LastIndexOf("."));
+                string ext = item.Substring(item.LastIndexOf(".") + 1);
                 string base64Str = Convert.ToBase64String(FileHelper.ReadToBytes(item));
                 base64List.Add($"data:image/{ext};base64,{base64Str}");
             }
-            string postData = Newtonsoft.Json.JsonConvert.SerializeObject(base64List);
-            string url = $"{this.ImportMaterialHost}?action=upfileImages&merchantID={this.MerchantID}";
-            string result = client.Request(url, HttpMethod.POST, postData, Encoding.UTF8);
+            var dataDic = new Dictionary<string, string>
+            {
+                {"action","upfileImages"},
+                {"merchantID",this.MerchantID},
+                {"imgDataJson",Newtonsoft.Json.JsonConvert.SerializeObject(base64List)}
+            };
+            string postData = string.Join("&", dataDic.Select(d => $"{d.Key}={d.Value.ToUrlEncode()}"));
+            string result = client.Request(this.ImportMaterialHost, HttpMethod.POST, postData, Encoding.UTF8, "application/x-www-form-urlencoded");
             var root = JToken.Parse(result);
             if (root.Value<bool>("OK"))
             {
-                imgList.AddRange(root.Value<List<string>>("Message"));
+                imgList.AddRange(root["Message"].Values<string>());
             }
             return imgList;
         }
