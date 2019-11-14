@@ -7,15 +7,19 @@ using Microsoft.Extensions.Configuration;
 using System.Text;
 using System.Text.Json;
 using System.Collections.Generic;
+using System.Net;
+using System.Linq;
 
 namespace HZ.Crawler.DataSpider
 {
     public class ShiweijiaCategory : BaseSpider
     {
         private IHttpClient Client { get; set; }
+        private ShiweijiaContext Context { get; }
         public ShiweijiaCategory(IConfiguration configuration, DataContext context)
         : base(configuration, context)
         {
+            this.Context = context as ShiweijiaContext;
             this.Client = HttpClientFactory.Create();
             this.Client.HttpRequest.Accept = "application/json, text/plain, */*";
             this.Client.HttpRequest.Referer = "https://www.shiweijia.com/";
@@ -32,9 +36,10 @@ namespace HZ.Crawler.DataSpider
             try
             {
                 string reqTime = DateTime.Now.GetMilliseconds().ToString();
-                string sign = Encrypt.ToMd5($"Nonce={this._Nonce}&ReqTime={reqTime}&TerminalType=web&TerminalVersion=lenovo", Encoding.UTF8).ToUpper();
+                string sign = Encrypt.ToMd5($"AppId=9900&Nonce={this._Nonce}&ReqTime={reqTime}&TerminalType=web&TerminalVersion=lenovo", Encoding.UTF8).ToUpper();
                 string data = JsonSerializer.Serialize(new
                 {
+                    AppId = 9900,
                     ReqTime = reqTime,
                     Nonce = this._Nonce,
                     Signature = sign,
@@ -64,8 +69,8 @@ namespace HZ.Crawler.DataSpider
                     }
                     if (jsonElement.TryGetProperty("Data", out var elements))
                     {
-                        var resultList = ParseItem(elements.EnumerateArray(), null);
-                        base.SaveData(ts: resultList.ToArray());
+                        ParseItem(elements.EnumerateArray(), null);
+                        this.Context.SaveChangesAsync();
                     }
                 }
             }
@@ -76,28 +81,29 @@ namespace HZ.Crawler.DataSpider
             return string.Empty;
         }
 
-        List<Model.Shiweijia.CategoryModel> ParseItem(JsonElement.ArrayEnumerator elements, int? parentId)
+        void ParseItem(JsonElement.ArrayEnumerator elements, int? parentId)
         {
-            //TODO:判断是否为空
-            var list = new List<Model.Shiweijia.CategoryModel>();
             foreach (var item in elements)
             {
                 int id = item.GetProperty("ID").GetInt32();
                 string name = item.GetProperty("CategoryName").GetString();
-                list.Add(new Model.Shiweijia.CategoryModel
+                var model = new Model.Shiweijia.CategoryModel
                 {
                     Id = id,
                     CategoryName = name,
                     CategoryImg = item.GetProperty("CategoryImg").GetString(),
                     ParentId = parentId
-                });
+                };
+                if (!this.Context.CategoryModels.Any(c => c.Id == model.Id))
+                {
+                    model.CategoryImg = base.UploadImgsByLink(model.CategoryImg).FirstOrDefault();
+                    this.Context.CategoryModels.AddAsync(model);
+                }
                 if (item.TryGetProperty("Subs", out var childs))
                 {
-                    list.AddRange(ParseItem(childs.EnumerateArray(), id));
+                    ParseItem(childs.EnumerateArray(), id);
                 }
             }
-            return list;
         }
-
     }
 }

@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -145,31 +146,50 @@ namespace HZ.Crawler.DataSpider
             System.Console.WriteLine($"{dataDic["productID"]}-{dataDic["productCode"]} 提交失败！");
             return false;
         }
-        /// <summary>
-        /// 上传图片
-        /// </summary>
-        /// <param name="paths"></param>
-        /// <returns></returns>
-        protected List<string> UploadImgs(params string[] paths)
+        protected List<string> UploadImgsByLink(params string[] links)
         {
-            var imgList = new List<string>();
-            if (paths == null || paths.Length == 0)
-            {
-                return imgList;
-            }
-            var client = HttpClientFactory.Create();
             var base64List = new List<string>();
-            foreach (var item in paths)
+            foreach (var item in links)
+            {//图片转base64
+                string ext = item.Substring(item.LastIndexOf(".") + 1);
+                if (ext.Contains("-"))
+                {
+                    ext = ext.Substring(0, ext.LastIndexOf('-'));
+                }
+                string base64Str = Convert.ToBase64String(new WebClient().DownloadData(item));
+                base64List.Add($"data:image/{ext};base64,{base64Str}");
+            }
+            return UploadImgs(base64List.ToArray());
+        }
+        protected List<string> UploadImgsByFile(params string[] files)
+        {
+            var base64List = new List<string>();
+            foreach (var item in files)
             {//图片转base64
                 string ext = item.Substring(item.LastIndexOf(".") + 1);
                 string base64Str = Convert.ToBase64String(FileHelper.ReadToBytes(item));
                 base64List.Add($"data:image/{ext};base64,{base64Str}");
             }
+            return UploadImgs(base64List.ToArray());
+        }
+        /// <summary>
+        /// 上传图片
+        /// </summary>
+        /// <param name="base64Array"></param>
+        /// <returns></returns>
+        protected List<string> UploadImgs(params string[] base64Array)
+        {
+            var imgList = new List<string>();
+            if (base64Array == null || base64Array.Length == 0)
+            {
+                return imgList;
+            }
+            var client = HttpClientFactory.Create();
             var dataDic = new Dictionary<string, string>
             {
                 {"action","upfileImages"},
                 {"merchantID",this.MerchantID},
-                {"imgDataJson",Newtonsoft.Json.JsonConvert.SerializeObject(base64List)}
+                {"imgDataJson",Newtonsoft.Json.JsonConvert.SerializeObject(base64Array)}
             };
             string postData = string.Join("&", dataDic.Select(d => $"{d.Key}={d.Value.ToUrlEncode()}"));
             string result = client.Request(this.ImportMaterialHost, HttpMethod.POST, postData, Encoding.UTF8, "application/x-www-form-urlencoded");

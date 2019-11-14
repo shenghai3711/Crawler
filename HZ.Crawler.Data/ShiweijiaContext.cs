@@ -14,12 +14,13 @@ namespace HZ.Crawler.Data
         public ShiweijiaContext(IConfiguration configuration)
             : base(configuration)
         {
-            this.Database.EnsureDeleted();//存在就删除
+            //this.Database.EnsureDeleted();//存在就删除
             this.Database.EnsureCreated();//不存在就创建
         }
         public DbSet<CategoryModel> CategoryModels { get; set; }
         public DbSet<ProductModel> ProductModels { get; set; }
         public DbSet<StyleModel> StyleModels { get; set; }
+        public DbSet<BrandModel> BrandModels { get; set; }
 
         protected override void ModelCreating(ModelBuilder modelBuilder)
         {
