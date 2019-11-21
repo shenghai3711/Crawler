@@ -143,6 +143,7 @@ namespace HZ.Crawler.DataSpider
                 System.Console.WriteLine($"{dataDic["productID"]}-{dataDic["productCode"]} 提交成功！");
                 return true;
             }
+            this.SaveFile(data);
             System.Console.WriteLine($"{dataDic["productID"]}-{dataDic["productCode"]} 提交失败！");
             return false;
         }

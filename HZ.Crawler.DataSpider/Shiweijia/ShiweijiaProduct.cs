@@ -38,11 +38,10 @@ namespace HZ.Crawler.DataSpider
         private string _Nonce = string.Empty;
         private string _ProductUrl = "https://api.shiweijia.com/api/Mall/QueryProductByPage";
         private string _ProductDetailUrl = "https://api.shiweijia.com/api/Product/GetProductDetail";
-        private int _PageSize = 10;
+        private int _PageSize = 100;
         protected override List<string> InitSpider()
         {
             this.CategoryList = this.Context.CategoryModels.ToList();
-            //return this.Context.CategoryModels.Where(c => c.ParentId != null).Select(c => $"{c.Id}").ToList();
             return this.CategoryList.Where(c => c.ParentId != null).Select(c => $"{c.Id}").ToList();
         }
         protected override string LoadHTML(string url, string param = null)
@@ -286,7 +285,7 @@ namespace HZ.Crawler.DataSpider
                             featureDic.Add(feature.Key, feature.Value[id]);
                         }
                     }
-                    product.Thumbnails = item.TryGetProperty("Thumbnails", out var thumbnailsElement) ? thumbnailsElement.GetString() : string.Empty;
+                    product.Thumbnails = item.TryGetProperty("Thumbnails", out var thumbnailsElement) ? thumbnailsElement.GetString() : product.MainImgs;
                     product.Features = Newtonsoft.Json.JsonConvert.SerializeObject(featureDic);
                 }
                 list.Add(productId);
@@ -374,7 +373,7 @@ namespace HZ.Crawler.DataSpider
                     {"brandCoverPath",product.BrandImg},
                     {"saleprice",product.SalePrice.ToString()},
                     {"Attribute",GetProductAttributeJson(product.Features)},//属性json
-                    {"coverPath",product.Thumbnails},
+                    {"coverPath",product.Thumbnails??pics.FirstOrDefault()},
                     {"materialPicture",product.MainImgs},//产品多图json
                     {"materialDetails",GetProductDetails(product)}//产品介绍
                 };
