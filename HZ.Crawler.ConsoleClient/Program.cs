@@ -12,6 +12,7 @@ namespace HZ.Crawler.ConsoleClient
 {
     class Program
     {
+        static Common.Logger logger = new Common.Logger(typeof(Program));
         static void Main(string[] args)
         {
             //编码注册
@@ -30,12 +31,12 @@ namespace HZ.Crawler.ConsoleClient
             .AddTransient<BaseSpider, ShiweijiaCategory>()
             .AddTransient<BaseSpider, ShiweijiaProduct>() //注入服务
             .BuildServiceProvider(); //编译
-
+            logger.Info("开始抓取");
             foreach (var spider in service.GetServices<BaseSpider>())
             {
                 spider.Run();
             }
-            System.Console.WriteLine("抓取完成");
+            logger.Info("抓取完成");
             Console.ReadKey();
         }
     }

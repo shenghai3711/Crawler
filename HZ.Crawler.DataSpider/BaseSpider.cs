@@ -23,13 +23,16 @@ namespace HZ.Crawler.DataSpider
         private string ImportMaterialHost { get; }
         private string MerchantID { get; }
         private int ThreadCount { get; }
+        protected readonly Common.Logger Logger = null;
         public BaseSpider(IConfiguration configuration, DataContext context)
         {
+            this.Logger = new Logger(this.GetType());
             this.Configuration = configuration;
             this.Context = context;
             this.ImportMaterialHost = configuration.GetValue(nameof(this.ImportMaterialHost), string.Empty);
             this.MerchantID = configuration.GetValue(nameof(this.MerchantID), string.Empty);
             this.ThreadCount = configuration.GetValue(nameof(this.ThreadCount), 5);
+            this.Logger.Info($"初始化成功，线程数量：{this.ThreadCount}");
         }
 
         public void Run()
@@ -37,12 +40,14 @@ namespace HZ.Crawler.DataSpider
             var config = new SpiderConfig();
             this.Configuration.GetSection(this.GetType().Name).Bind(config);
             //this.Configuration.GetValue<SpiderConfig>(this.GetType().Name);//反射不到数组
-            System.Console.WriteLine($"开始采集{config.Name}");
+            this.Logger.Info($"{config.Name}开始采集");
             foreach (var host in config.Hosts)
             {
+                this.Logger.Info($"开始采集{config.Name}-{host}");
                 this.CrawleHost(host);
+                this.Logger.Info($"采集结束{config.Name}-{host}");
             }
-            System.Console.WriteLine($"{config.Name}采集结束");
+            this.Logger.Info($"{config.Name}采集结束");
         }
         private void CrawleHost(string host)
         {
@@ -66,6 +71,7 @@ namespace HZ.Crawler.DataSpider
         {
             do
             {
+                this.Logger.Info($"加载【{url}】......");
                 string html = this.LoadHTML(url, param);
                 if (string.IsNullOrEmpty(html))
                 {
@@ -140,11 +146,11 @@ namespace HZ.Crawler.DataSpider
             var json = JsonDocument.Parse(result);
             if (json.RootElement.GetProperty("OK").GetBoolean())
             {
-                System.Console.WriteLine($"{dataDic["productID"]}-{dataDic["productCode"]} 提交成功！");
+                this.Logger.Info($"{dataDic["productID"]}-{dataDic["productCode"]} 提交成功！");
                 return true;
             }
             this.SaveFile(data);
-            System.Console.WriteLine($"{dataDic["productID"]}-{dataDic["productCode"]} 提交失败！");
+            this.Logger.Info($"{dataDic["productID"]}-{dataDic["productCode"]} 提交失败！");
             return false;
         }
         protected List<string> UploadImgsByLink(params string[] links)

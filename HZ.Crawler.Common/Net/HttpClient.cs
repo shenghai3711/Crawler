@@ -20,11 +20,12 @@ namespace HZ.Crawler.Common.Net
         public int Timeout { get; set; }
         // public string Accept { get; set; }
         public Encoding Aencding { get; set; }
-
+        private readonly Logger Logger;
         public IHttpRequest HttpRequest { get; set; }
         public IHttpResponse HttpResponse { get; set; }
         public HttpClient()
         {
+            this.Logger = new Logger(typeof(HttpClient));
             this.Timeout = 100 * 1000;
             //this.CookieContainer = new CookieContainer();
             // Headers = new WebHeaderCollection();
@@ -35,6 +36,7 @@ namespace HZ.Crawler.Common.Net
 
         public HttpClient(int timeout)
         {
+            this.Logger = new Logger(typeof(HttpClient));
             this.Timeout = timeout;
         }
 
@@ -47,6 +49,7 @@ namespace HZ.Crawler.Common.Net
                 urlFormated = string.Format("{0}{1}{2}", url, url.IndexOf('?') > 0 ? "&" : "?", data);
             }
             HttpWebRequest req = CreateRequest(urlFormated);
+            this.Logger.Info(urlFormated);
             if (!string.IsNullOrEmpty(HttpRequest.Accept))
             {
                 req.Accept = HttpRequest.Accept;
@@ -92,6 +95,10 @@ namespace HZ.Crawler.Common.Net
 
             if (method == HttpMethod.POST)
             {
+                if (!string.IsNullOrEmpty(data))
+                {
+                    this.Logger.Info(data);
+                }
                 byte[] bytes = string.IsNullOrEmpty(data) ? new byte[] { } : encoding.GetBytes(data);
 
                 req.ContentLength = bytes.Length + (binaryData == null ? 0 : binaryData.Length);
@@ -113,7 +120,7 @@ namespace HZ.Crawler.Common.Net
                     try
                     {
                         this.HttpRequest.CookieContainer = req.CookieContainer;
-                        
+
                         return GetData(res);
                     }
                     finally
@@ -168,6 +175,7 @@ namespace HZ.Crawler.Common.Net
             {
                 this.HttpResponse.Html = sr.ReadToEnd();
             }
+            this.Logger.Info(this.HttpResponse.Html);
             return this.HttpResponse.Html;
         }
 
@@ -233,6 +241,7 @@ namespace HZ.Crawler.Common.Net
                 MemoryStream ms = new MemoryStream();
                 mp.ToStream(ms, encoding);
                 HttpWebRequest webRequest = CreateRequest(mp.Url);
+            this.Logger.Info(mp.Url);
                 webRequest.ReadWriteTimeout = Timeout;
                 if (!string.IsNullOrEmpty(HttpRequest.Accept))
                 {
