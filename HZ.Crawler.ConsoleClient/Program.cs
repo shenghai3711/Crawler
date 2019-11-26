@@ -6,15 +6,15 @@ using HZ.Crawler.DataSpider;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
 
 namespace HZ.Crawler.ConsoleClient
 {
     class Program
     {
-        static Common.Logger logger = new Common.Logger(typeof(Program));
         static void Main(string[] args)
         {
+            Common.Logger.LoggerHost = "http://localhost:5000/";
+            var logger = new Common.Logger(typeof(Program));
             //编码注册
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
             //添加Nugget包Microsoft.Extensions.Configuration(ConfigurationBuilder) 和 Microsoft.Extensions.Configuration.Json(AddJsonFile)
@@ -26,18 +26,19 @@ namespace HZ.Crawler.ConsoleClient
             var service = new ServiceCollection()
             .AddOptions()
             .AddSingleton<IConfiguration>(config)//单例
-            .AddTransient<ILoggerFactory, LoggerFactory>()
+            //.AddTransient<ILoggerFactory, LoggerFactory>()
             .AddTransient<DataContext, ShiweijiaContext>()
             .AddTransient<BaseSpider, ShiweijiaCategory>()
             .AddTransient<BaseSpider, ShiweijiaProduct>() //注入服务
             .BuildServiceProvider(); //编译
+
             logger.Info("开始抓取");
             foreach (var spider in service.GetServices<BaseSpider>())
             {
-                spider.Run();
+               spider.Run();
             }
             logger.Info("抓取完成");
-            Console.ReadKey();
+            Console.Read();
         }
     }
 }

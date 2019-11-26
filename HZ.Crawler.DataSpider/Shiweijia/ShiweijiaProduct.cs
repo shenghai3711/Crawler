@@ -46,82 +46,68 @@ namespace HZ.Crawler.DataSpider
         }
         protected override string LoadHTML(string url, string param = null)
         {
-            try
+            if (!int.TryParse(url, out int pageIndex))
             {
-                if (!int.TryParse(url, out int pageIndex))
-                {
-                    pageIndex = 1;
-                }
-                string category = param;
-                System.Console.WriteLine($"{this.CategoryList.FirstOrDefault(c => c.Id.ToString() == category).CategoryName} 正在采集第{pageIndex}页");
-                string reqTime = DateTime.Now.GetMilliseconds().ToString();
-                string sign = Encrypt.ToMd5($"AppId=9900&Category={category}&MaxPrice=0&MinPrice=0&Nonce={this._Nonce}&OrderType=0&PageIndex={pageIndex}&PageSize={this._PageSize}&ReqTime={reqTime}&Suffix=shengshi&TerminalType=web&TerminalVersion=lenovo", Encoding.UTF8).ToUpper();
-                string postData = JsonSerializer.Serialize(new
-                {
-                    AppId = 9900,
-                    ReqTime = reqTime,
-                    Nonce = this._Nonce,
-                    Signature = sign,
-                    TerminalType = "web",
-                    TerminalVersion = "lenovo",
-                    Category = category,
-                    Pattern = "",
-                    Brand = "",
-                    KeyWord = "",
-                    OrderType = 0,
-                    PageSize = this._PageSize,
-                    PageIndex = pageIndex,
-                    MinPrice = 0,
-                    MaxPrice = 0,
-                    Suffix = "shengshi"
-                });
-                string result = this.Client.Request(this._ProductUrl, HttpMethod.POST, postData, Encoding.UTF8, "application/json;charset=UTF-8");
-                return result;
+                pageIndex = 1;
             }
-            catch (System.Exception)
-            {//TODO:加载异常
-                return string.Empty;
-            }
+            string category = param;
+            this.Logger.Info($"{this.CategoryList.FirstOrDefault(c => c.Id.ToString() == category).CategoryName} 正在采集第{pageIndex}页");
+            string reqTime = DateTime.Now.GetMilliseconds().ToString();
+            string sign = Encrypt.ToMd5($"AppId=9900&Category={category}&MaxPrice=0&MinPrice=0&Nonce={this._Nonce}&OrderType=0&PageIndex={pageIndex}&PageSize={this._PageSize}&ReqTime={reqTime}&Suffix=shengshi&TerminalType=web&TerminalVersion=lenovo", Encoding.UTF8).ToUpper();
+            string postData = JsonSerializer.Serialize(new
+            {
+                AppId = 9900,
+                ReqTime = reqTime,
+                Nonce = this._Nonce,
+                Signature = sign,
+                TerminalType = "web",
+                TerminalVersion = "lenovo",
+                Category = category,
+                Pattern = "",
+                Brand = "",
+                KeyWord = "",
+                OrderType = 0,
+                PageSize = this._PageSize,
+                PageIndex = pageIndex,
+                MinPrice = 0,
+                MaxPrice = 0,
+                Suffix = "shengshi"
+            });
+            string result = this.Client.Request(this._ProductUrl, HttpMethod.POST, postData, Encoding.UTF8, "application/json;charset=UTF-8");
+            return result;
         }
 
         protected override string ParseSave(string html, string param = null)
         {
-            try
+            int categoryId = Convert.ToInt32(param);
+            using (var jsonDoc = JsonDocument.Parse(html))
             {
-                int categoryId = Convert.ToInt32(param);
-                using (var jsonDoc = JsonDocument.Parse(html))
-                {
-                    var jsonElement = jsonDoc.RootElement;
-                    bool isSuccess = jsonElement.GetProperty("IsSuccess").GetBoolean();
-                    if (!isSuccess)
-                    {//TODO:请求失败
-                        return string.Empty;
-                    }
-                    if (jsonElement.TryGetProperty("Data", out var dataElement) && dataElement.TryGetProperty("Rows", out var rowElement))
-                    {
-                        var resultList = ParseItem(rowElement.EnumerateArray(), categoryId);
-                        this.Context.SaveChanges();
-                        //base.SaveData(ts: resultList.ToArray());
-                        int pageIndex = dataElement.GetProperty("PageIndex").GetInt32();
-                        int total = dataElement.GetProperty("Total").GetInt32();
-                        int pageCount = Convert.ToInt32(Math.Ceiling(total / Convert.ToDouble(this._PageSize)));
-                        return pageIndex > pageCount ? string.Empty : (pageIndex + 1).ToString();
-                    }
+                var jsonElement = jsonDoc.RootElement;
+                bool isSuccess = jsonElement.GetProperty("IsSuccess").GetBoolean();
+                if (!isSuccess)
+                {//TODO:请求失败
+                    this.Logger.Warn($"解析商品列表失败:{html}");
+                    return string.Empty;
                 }
-            }
-            catch (System.Exception)
-            {//TODO:解析异常
-                base.SaveFile(html);
+                if (jsonElement.TryGetProperty("Data", out var dataElement) && dataElement.TryGetProperty("Rows", out var rowElement))
+                {
+                    var resultList = ParseItem(rowElement.EnumerateArray(), categoryId);
+                    this.Context.SaveChanges();
+                    //base.SaveData(ts: resultList.ToArray());
+                    int pageIndex = dataElement.GetProperty("PageIndex").GetInt32();
+                    int total = dataElement.GetProperty("Total").GetInt32();
+                    int pageCount = Convert.ToInt32(Math.Ceiling(total / Convert.ToDouble(this._PageSize)));
+                    return pageIndex > pageCount ? string.Empty : (pageIndex + 1).ToString();
+                }
             }
             return string.Empty;
         }
         List<Model.Shiweijia.ProductModel> ParseItem(JsonElement.ArrayEnumerator elements, int categoryId)
         {
-            //TODO:判断是否为空
             var list = new List<Model.Shiweijia.ProductModel>();
-            foreach (var item in elements)//每页的数据
+            foreach (var item in elements)//一页数据
             {
-                //需要加载商品详情（每一种规格都需要加载）
+                //需要加载每个商品详情（每一种规格都需要加载）
                 try
                 {
                     var products = GetAllProductDetail(item.GetProperty("ID").GetInt32(), categoryId);
@@ -129,7 +115,8 @@ namespace HZ.Crawler.DataSpider
                 }
                 catch (System.Exception ex)
                 {
-                    System.Console.WriteLine(ex.Message);
+                    this.Logger.Error("解析商品详情异常", ex);
+                    System.Threading.Thread.Sleep(1000);
                 }
             }
             return list;
@@ -144,20 +131,19 @@ namespace HZ.Crawler.DataSpider
             var allProductIds = new List<int>();
             do
             {
+                this.Logger.Info($"开始获取 {productId} 详情信息......");
                 try
                 {
                     var product = GetProductDetail(productId, nonce, ref allProductIds);
-                    if (product == null)
-                    {
-                        break;
-                    }
                     product.CategoryId = categoryId;
                     products.Add(product);
                     this.ImportMaterial(product);
                 }
-                catch (System.Exception)
-                { }
-                if (allProductIds == null)
+                catch (System.Exception ex)
+                {
+                    this.Logger.Error($"获取 {productId} 详情信息异常", ex);
+                }
+                if (allProductIds == null || allProductIds.Count == 0)
                 {
                     break;
                 }
@@ -169,21 +155,21 @@ namespace HZ.Crawler.DataSpider
 
         Model.Shiweijia.ProductModel GetProductDetail(int productId, string nonce, ref List<int> allProductIds)
         {
-            var otherIds = new List<int>();
+            ProductModel product = null;
             string result = GetProductDetailJson(productId, nonce);
             using (var jsonDoc = JsonDocument.Parse(result))
             {
                 bool isSuccess = jsonDoc.RootElement.GetProperty("IsSuccess").GetBoolean();
                 if (!isSuccess)
-                {//TODO:获取商品详情失败
-                    return null;
+                {
+                    throw new Exception($"解析商品详情失败:{result}");
                 }
                 if (jsonDoc.RootElement.TryGetProperty("Data", out var dataElement))
                 {
-                    return ParseProduct(dataElement, ref allProductIds);
+                    product = ParseProduct(dataElement, ref allProductIds);
                 }
             }
-            return null;
+            return product;
         }
         string GetProductDetailJson(int productId, string nonce)
         {
@@ -230,6 +216,7 @@ namespace HZ.Crawler.DataSpider
                 Style = dataElement.TryGetProperty("Pattern", out var patternElement) ? patternElement.GetString() : string.Empty,
                 SalePrice = dataElement.GetProperty("SalePrice").GetDecimal()
             };
+            this.Logger.Info($"商品主要数据:[编号：{product.Id}],[名称：{product.Name}],[品牌：{product.BrandName}],[价格：{product.SalePrice}]");
             if (dataElement.TryGetProperty("Paras", out var specificationsElement) && specificationsElement.ValueKind == JsonValueKind.Array)
             {
                 product.Specifications = GetSpecifications(specificationsElement.EnumerateArray());
@@ -249,19 +236,26 @@ namespace HZ.Crawler.DataSpider
         string GetSpecifications(JsonElement.ArrayEnumerator elements)
         {
             var dic = new Dictionary<string, string>();
-            foreach (var item in elements)
+            try
             {
-                if (item.TryGetProperty("Paras", out var parasElement) && parasElement.ValueKind == JsonValueKind.Array)
+                foreach (var item in elements)
                 {
-                    foreach (var para in parasElement.EnumerateArray())
+                    if (item.TryGetProperty("Paras", out var parasElement) && parasElement.ValueKind == JsonValueKind.Array)
                     {
-                        string value = para.GetProperty("ParameterValue").GetString();
-                        if (!string.IsNullOrEmpty(value))
+                        foreach (var para in parasElement.EnumerateArray())
                         {
-                            dic.Add(para.GetProperty("Name").GetString(), value);
+                            string value = para.GetProperty("ParameterValue").GetString();
+                            if (!string.IsNullOrEmpty(value))
+                            {
+                                dic.Add(para.GetProperty("Name").GetString(), value);
+                            }
                         }
                     }
                 }
+            }
+            catch (System.Exception ex)
+            {
+                this.Logger.Error("解析商品规格异常", ex);
             }
             return Newtonsoft.Json.JsonConvert.SerializeObject(dic);
         }
@@ -272,23 +266,30 @@ namespace HZ.Crawler.DataSpider
             foreach (var item in elements)
             {
                 int productId = item.GetProperty("ProductId").GetInt32();
-                if (productId == product.Id)
+                try
                 {
-                    var featureDic = new Dictionary<string, string>();
-                    if (item.TryGetProperty("SpecificationValueIds", out var svIdElement) && svIdElement.ValueKind == JsonValueKind.Array)
+                    if (productId == product.Id)
                     {
-                        foreach (var value in svIdElement.EnumerateArray())
+                        var featureDic = new Dictionary<string, string>();
+                        if (item.TryGetProperty("SpecificationValueIds", out var svIdElement) && svIdElement.ValueKind == JsonValueKind.Array)
                         {
-                            int id = value.GetInt32();
-                            var feature = features.FirstOrDefault(f => f.Value.Keys.Any(k => k == id));
-                            if (featureDic.Keys.Any(k => k == feature.Key)) continue;
-                            featureDic.Add(feature.Key, feature.Value[id]);
+                            foreach (var value in svIdElement.EnumerateArray())
+                            {
+                                int id = value.GetInt32();
+                                var feature = features.FirstOrDefault(f => f.Value.Keys.Any(k => k == id));
+                                if (featureDic.Keys.Any(k => k == feature.Key)) continue;
+                                featureDic.Add(feature.Key, feature.Value[id]);
+                            }
                         }
+                        product.Thumbnails = item.TryGetProperty("Thumbnails", out var thumbnailsElement) ? thumbnailsElement.GetString() : product.MainImgs;
+                        product.Features = Newtonsoft.Json.JsonConvert.SerializeObject(featureDic);
                     }
-                    product.Thumbnails = item.TryGetProperty("Thumbnails", out var thumbnailsElement) ? thumbnailsElement.GetString() : product.MainImgs;
-                    product.Features = Newtonsoft.Json.JsonConvert.SerializeObject(featureDic);
+                    list.Add(productId);
                 }
-                list.Add(productId);
+                catch (System.Exception ex)
+                {
+                    this.Logger.Error($"解析商品{productId}规格异常", ex);
+                }
             }
             return list;
         }
@@ -300,17 +301,24 @@ namespace HZ.Crawler.DataSpider
         Dictionary<string, Dictionary<int, string>> GetFeatures(JsonElement.ArrayEnumerator elements)
         {
             var dic = new Dictionary<string, Dictionary<int, string>>();
-            foreach (var item in elements)
+            try
             {
-                if (item.TryGetProperty("Values", out var valuesElement) && valuesElement.ValueKind == JsonValueKind.Array)
+                foreach (var item in elements)
                 {
-                    var values = new Dictionary<int, string>();
-                    foreach (var value in valuesElement.EnumerateArray())
+                    if (item.TryGetProperty("Values", out var valuesElement) && valuesElement.ValueKind == JsonValueKind.Array)
                     {
-                        values.Add(value.GetProperty("Id").GetInt32(), value.GetProperty("Name").GetString());
+                        var values = new Dictionary<int, string>();
+                        foreach (var value in valuesElement.EnumerateArray())
+                        {
+                            values.Add(value.GetProperty("Id").GetInt32(), value.GetProperty("Name").GetString());
+                        }
+                        dic.Add(item.GetProperty("Name").GetString(), values);
                     }
-                    dic.Add(item.GetProperty("Name").GetString(), values);
                 }
+            }
+            catch (System.Exception ex)
+            {
+                this.Logger.Error("解析商品特性异常", ex);
             }
             return dic;
         }
@@ -341,7 +349,7 @@ namespace HZ.Crawler.DataSpider
 
         void ImportMaterial(Model.Shiweijia.ProductModel product)
         {
-            System.Console.WriteLine($"开始提交{product.Id}-{product.ProductCode}");
+            this.Logger.Info($"开始提交{product.Id}-{product.Name}");
             var childCategory = this.CategoryList.FirstOrDefault(c => c.Id == product.CategoryId);
             var category = this.CategoryList.FirstOrDefault(c => c.Id == childCategory.ParentId);
             string cover = GetImgStr(product.ProductCode, "缩略图").FirstOrDefault();
@@ -399,9 +407,7 @@ namespace HZ.Crawler.DataSpider
                     details.Append($"<p>{item.Key}:{item.Value}</p>");
                 }
             }
-            catch (System.Exception)
-            {
-            }
+            catch (System.Exception) { }
             #endregion
             var detailImgs = GetImgStr(product.ProductCode, "详情图");
             if (detailImgs.Count == 0)
@@ -443,8 +449,7 @@ namespace HZ.Crawler.DataSpider
                 });
                 return Newtonsoft.Json.JsonConvert.SerializeObject(attributes);
             }
-            catch (System.Exception)
-            { }
+            catch (System.Exception) { }
             return string.Empty;
         }
     }

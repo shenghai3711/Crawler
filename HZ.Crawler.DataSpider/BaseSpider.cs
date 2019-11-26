@@ -55,6 +55,7 @@ namespace HZ.Crawler.DataSpider
             var taskList = new List<Task>();
             foreach (var item in this.InitSpider())
             {
+                this.Logger.Info($"开启线程【{System.Threading.Thread.CurrentThread.ManagedThreadId}】");
                 if (taskList.Count >= this.ThreadCount)//线程数量达到
                 {
                     taskList = taskList.Where(t => !t.IsCanceled && !t.IsCompleted && !t.IsFaulted).ToList();
@@ -72,18 +73,27 @@ namespace HZ.Crawler.DataSpider
             do
             {
                 this.Logger.Info($"加载【{url}】......");
-                string html = this.LoadHTML(url, param);
-                if (string.IsNullOrEmpty(html))
+                string html = string.Empty;
+                try
                 {
-                    break;
+                    html = this.LoadHTML(url, param);
                 }
-                url = this.ParseSave(html, param);
-                if (string.IsNullOrEmpty(url))
+                catch (System.Exception ex)
                 {
-                    break;
+                    this.Logger.Error($"加载数据异常", ex);
+                }
+                if (string.IsNullOrEmpty(html)) break;
+                try
+                {
+                    url = this.ParseSave(html, param);
+                }
+                catch (System.Exception ex)
+                {
+                    this.SaveFile(html);
+                    this.Logger.Error($"解析数据异常", ex);
                 }
                 System.Threading.Thread.Sleep(new Random().Next(3000, 6000));
-            } while (true);
+            } while (!string.IsNullOrEmpty(url));
         }
         protected virtual List<string> InitSpider()
         {
@@ -129,7 +139,9 @@ namespace HZ.Crawler.DataSpider
             {
                 Directory.CreateDirectory(dirName);
             }
-            FileHelper.Write($"{dirName}/{this.GetType().Name.ToLower()}-{DateTime.Now.ToString("MMddHHmmssfff")}-{Guid.NewGuid().ToString("N").Substring(0, 4)}.txt", html);
+            string path = $"{dirName}/{this.GetType().Name.ToLower()}-{DateTime.Now.ToString("MMddHHmmssfff")}-{Guid.NewGuid().ToString("N").Substring(0, 4)}.txt";
+            FileHelper.Write(path, html);
+            this.Logger.Info($"已保存文件:{path}");
         }
         /// <summary>
         /// 提交产品
@@ -146,11 +158,11 @@ namespace HZ.Crawler.DataSpider
             var json = JsonDocument.Parse(result);
             if (json.RootElement.GetProperty("OK").GetBoolean())
             {
-                this.Logger.Info($"{dataDic["productID"]}-{dataDic["productCode"]} 提交成功！");
+                this.Logger.Info($"{dataDic["productID"]}-{dataDic["materialName"]} 提交成功！");
                 return true;
             }
             this.SaveFile(data);
-            this.Logger.Info($"{dataDic["productID"]}-{dataDic["productCode"]} 提交失败！");
+            this.Logger.Info($"{dataDic["productID"]}-{dataDic["materialName"]} 提交失败！");
             return false;
         }
         protected List<string> UploadImgsByLink(params string[] links)
@@ -203,6 +215,7 @@ namespace HZ.Crawler.DataSpider
             var root = JToken.Parse(result);
             if (root.Value<bool>("OK"))
             {
+                this.Logger.Info($"上传图片成功！");
                 imgList.AddRange(root["Message"].Values<string>());
             }
             return imgList;

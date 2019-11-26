@@ -34,12 +34,6 @@ namespace HZ.Crawler.Common.Net
             this.HttpResponse = new HttpResponse();
         }
 
-        public HttpClient(int timeout)
-        {
-            this.Logger = new Logger(typeof(HttpClient));
-            this.Timeout = timeout;
-        }
-
         public string Request(string url, HttpMethod method, string data, Encoding encoding, string contentType = null, CredentialCache mycache = null, NameValueCollection moreHeader = null)
         {
             string urlFormated = url;
@@ -241,7 +235,7 @@ namespace HZ.Crawler.Common.Net
                 MemoryStream ms = new MemoryStream();
                 mp.ToStream(ms, encoding);
                 HttpWebRequest webRequest = CreateRequest(mp.Url);
-            this.Logger.Info(mp.Url);
+                this.Logger.Info(mp.Url);
                 webRequest.ReadWriteTimeout = Timeout;
                 if (!string.IsNullOrEmpty(HttpRequest.Accept))
                 {
@@ -276,21 +270,25 @@ namespace HZ.Crawler.Common.Net
                         this.HttpRequest.CookieContainer = webRequest.CookieContainer;
                         using (StreamReader sr = new StreamReader(res.GetResponseStream(), encoding))
                         {
-                            return sr.ReadToEnd();
+                            string result = sr.ReadToEnd();
+                            this.Logger.Info(result);
+                            return result;
                         }
                     }
                 }
                 catch (WebException e)
                 {
                     string responseText = e.Message;
+                    this.Logger.Error(ex: e);
                     using (WebResponse response = e.Response)
                     {
                         HttpWebResponse httpResponse = (HttpWebResponse)response;
-                        Console.WriteLine("Error code: {0}", httpResponse.StatusCode);
+                        this.Logger.Info($"Error code: {httpResponse.StatusCode}");
                         using (Stream responseData = response.GetResponseStream())
                         using (var reader = new StreamReader(responseData))
                         {
                             responseText = reader.ReadToEnd();
+                            this.Logger.Info(responseText);
                         }
                     }
                     throw new WebException(string.IsNullOrEmpty(responseText) ? e.Status.ToString() : responseText, e);
@@ -298,6 +296,7 @@ namespace HZ.Crawler.Common.Net
             }
             catch (Exception e)
             {
+                this.Logger.Error(ex: e);
                 return e.Message;
             }
         }
