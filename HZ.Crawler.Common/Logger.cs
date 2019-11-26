@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Net;
+using System.Reflection;
 using System.Text;
 using log4net;
 using log4net.Config;
@@ -10,12 +11,11 @@ namespace HZ.Crawler.Common
     public class Logger
     {
         public static string LoggerHost;
-        private readonly static Net.IHttpClient Client = Net.HttpClientFactory.Create();
         static Logger()
         {
-            var Repository = LogManager.CreateRepository("NETCoreRepository");
+            var logRepository = log4net.LogManager.CreateRepository(Assembly.GetEntryAssembly(), typeof(log4net.Repository.Hierarchy.Hierarchy));
             var fileInfo = new FileInfo(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CfgFiles\\log4net.cfg.xml"));
-            XmlConfigurator.Configure(Repository, fileInfo);
+            XmlConfigurator.Configure(logRepository, fileInfo);
             ILog Log = LogManager.GetLogger(typeof(Logger));
             Log.Info("系统初始化Logger模块");
         }
