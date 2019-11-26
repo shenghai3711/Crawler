@@ -1,10 +1,9 @@
+using NLog;
 using System;
 using System.IO;
 using System.Net;
 using System.Reflection;
 using System.Text;
-using log4net;
-using log4net.Config;
 
 namespace HZ.Crawler.Common
 {
@@ -13,43 +12,38 @@ namespace HZ.Crawler.Common
         public static string LoggerHost;
         static Logger()
         {
-            var logRepository = log4net.LogManager.CreateRepository(Assembly.GetEntryAssembly(), typeof(log4net.Repository.Hierarchy.Hierarchy));
-            var fileInfo = new FileInfo(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CfgFiles\\log4net.cfg.xml"));
-            XmlConfigurator.Configure(logRepository, fileInfo);
-            ILog Log = LogManager.GetLogger(typeof(Logger));
-            Log.Info("系统初始化Logger模块");
+            //var logRepository = log4net.LogManager.CreateRepository(Assembly.GetEntryAssembly(), typeof(log4net.Repository.Hierarchy.Hierarchy));
+            //var fileInfo = new FileInfo(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "CfgFiles\\log4net.cfg.xml"));
+            //XmlConfigurator.Configure(logRepository, fileInfo);
+            //ILog Log = LogManager.GetLogger(typeof(Logger));
+            //Log.Info("系统初始化Logger模块");
         }
-
-        private ILog loger = null;
+        private NLog.Logger loger = null;
         public Logger(Type type)
         {
-            loger = LogManager.GetLogger(type);
+            loger = LogManager.GetCurrentClassLogger(type);
         }
 
         public void Error(string msg = "出现异常", Exception ex = null)
         {
-            Console.WriteLine(msg);
-            loger.Error(msg, ex);
+            loger.Error(ex, msg);
             CommitLogInfo("ERROR", $"{msg}:{ex?.Message}");
         }
 
         public void Warn(string msg)
         {
-            Console.WriteLine(msg);
             loger.Warn(msg);
             CommitLogInfo("WARNING", msg);
         }
 
         public void Info(string msg)
         {
-            Console.WriteLine(msg);
             loger.Info(msg);
             CommitLogInfo("INFO", msg);
         }
 
         public void Debug(string msg)
         {
-            Console.WriteLine(msg);
             loger.Debug(msg);
             CommitLogInfo("DEBUG", msg);
         }
