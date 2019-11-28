@@ -7,7 +7,7 @@
             "type": "process",
             "args": [
                 "build",
-                "${workspaceFolder}/HZ.Crawler.WebUI/HZ.Crawler.WebUI.csproj",
+                "${workspaceFolder}/HZ.Crawler.ConsoleClient/HZ.Crawler.ConsoleClient.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary"
             ],
@@ -19,7 +19,7 @@
             "type": "process",
             "args": [
                 "publish",
-                "${workspaceFolder}/HZ.Crawler.WebUI/HZ.Crawler.WebUI.csproj",
+                "${workspaceFolder}/HZ.Crawler.ConsoleClient/HZ.Crawler.ConsoleClient.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary"
             ],
@@ -32,7 +32,7 @@
             "args": [
                 "watch",
                 "run",
-                "${workspaceFolder}/HZ.Crawler.WebUI/HZ.Crawler.WebUI.csproj",
+                "${workspaceFolder}/HZ.Crawler.ConsoleClient/HZ.Crawler.ConsoleClient.csproj",
                 "/property:GenerateFullPaths=true",
                 "/consoleloggerparameters:NoSummary"
             ],

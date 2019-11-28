@@ -57,9 +57,7 @@ namespace HZ.Crawler.Data
                 default:
                     break;
             }
-            //optionsBuilder.UseLoggerFactory(LoggerFactory);//将EF生成的sql语句输出到debug输出
             base.OnConfiguring(optionsBuilder);
         }
-        public static readonly LoggerFactory LoggerFactory = new LoggerFactory(new[] { new DebugLoggerProvider() });
     }
 }

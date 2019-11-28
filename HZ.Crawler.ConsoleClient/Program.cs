@@ -13,7 +13,7 @@ namespace HZ.Crawler.ConsoleClient
     {
         static void Main(string[] args)
         {
-            Common.Logger.LoggerHost = "http://localhost:5000/";
+            //Common.Logger.LoggerHost = "http://localhost/";
             var logger = new Common.Logger(typeof(Program));
             //编码注册
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);

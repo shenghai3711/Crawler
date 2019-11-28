@@ -32,7 +32,7 @@ namespace HZ.Crawler.DataSpider
             this.ImportMaterialHost = configuration.GetValue(nameof(this.ImportMaterialHost), string.Empty);
             this.MerchantID = configuration.GetValue(nameof(this.MerchantID), string.Empty);
             this.ThreadCount = configuration.GetValue(nameof(this.ThreadCount), 5);
-            this.Logger.Info($"初始化成功，线程数量：{this.ThreadCount}");
+            this.Logger.Info($"{this.GetType().Name}初始化成功，线程数量：{this.ThreadCount}");
         }
 
         public void Run()

@@ -76,10 +76,8 @@ namespace HZ.Crawler.Common.Net
     {
         protected HttpPart()
         {
-            this.Logger = new Logger(this.GetType());
         }
 
-        protected readonly Logger Logger;
         public static void StringToStream(Stream stream, Encoding encoding, string data)
         {
             byte[] st = encoding.GetBytes(data);
@@ -107,7 +105,7 @@ namespace HZ.Crawler.Common.Net
         {
             string header = string.Format("--{0}\r\nContent-Disposition: form-data; name=\"{1}\"\r\n\r\n{2}",
                 boundary, this.Name, this.Data);
-            this.Logger.Info(header);
+            HttpClient.Logger.Info(header);
             HttpPart.StringToStream(stream, encoding, header);
         }
     }
@@ -144,7 +142,7 @@ namespace HZ.Crawler.Common.Net
             }
             string header = string.Format("--{0}\r\nContent-Disposition: form-data; name=\"{1}\"; filename=\"{2}\"\r\nContent-Type:{3}\r\n\r\n",
                 boundary, this.Name, this.FileName, contentType);
-            this.Logger.Info(header);
+            HttpClient.Logger.Info(header);
             HttpPart.StringToStream(stream, encoding, header);
             stream.Write(this.Data, 0, this.Data.Length);
             //HttpPart.StringToStream(stream, encoding, "\r\n");
