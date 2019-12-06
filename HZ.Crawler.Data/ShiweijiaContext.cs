@@ -19,11 +19,21 @@ namespace HZ.Crawler.Data
         }
         public DbSet<CategoryModel> CategoryModels { get; set; }
         public DbSet<ProductModel> ProductModels { get; set; }
-        public DbSet<StyleModel> StyleModels { get; set; }
         public DbSet<BrandModel> BrandModels { get; set; }
 
         protected override void ModelCreating(ModelBuilder modelBuilder)
         {
+            modelBuilder.Entity<CategoryModel>()
+                        .Property(t => t.Id)
+                        .ValueGeneratedNever();//不自动增长
+
+            modelBuilder.Entity<ProductModel>()
+                        .Property(t => t.Id)
+                        .ValueGeneratedNever();//不自动增长
+
+            modelBuilder.Entity<BrandModel>()
+                        .Property(t => t.Id)
+                        .ValueGeneratedNever();//不自动增长
         }
     }
 }

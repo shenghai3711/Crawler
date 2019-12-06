@@ -3,7 +3,9 @@ using HZ.Crawler.Common.Extensions;
 using HZ.Crawler.Common.Net;
 using HZ.Crawler.Data;
 using HZ.Crawler.Model;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
@@ -55,7 +57,6 @@ namespace HZ.Crawler.DataSpider
             var taskList = new List<Task>();
             foreach (var item in this.InitSpider())
             {
-                this.Logger.Info($"开启线程【{System.Threading.Thread.CurrentThread.ManagedThreadId}】");
                 if (taskList.Count >= this.ThreadCount)//线程数量达到
                 {
                     taskList = taskList.Where(t => !t.IsCanceled && !t.IsCompleted && !t.IsFaulted).ToList();
@@ -64,7 +65,11 @@ namespace HZ.Crawler.DataSpider
                 else
                     Task.Delay(500);
                 string temp = item;
-                taskList.Add(Task.Factory.StartNew(() => TaskRun(url, temp)));
+                taskList.Add(Task.Run(() =>
+                {
+                    this.Logger.Info($"开启线程【{System.Threading.Thread.CurrentThread.ManagedThreadId}】");
+                    TaskRun(url, temp);
+                }));
             }
             Task.WaitAll(taskList.ToArray());//等待所有完成
         }
@@ -126,7 +131,7 @@ namespace HZ.Crawler.DataSpider
         }
         protected bool Exists<T>(T t) where T : BaseModel, new()
         {
-            return this.Context.Find<T>(t.Id) != null;
+            return this.Context.FindAsync<T>(t.Id) != null;
         }
         /// <summary>
         /// 解析失败的保存
@@ -154,15 +159,22 @@ namespace HZ.Crawler.DataSpider
             dataDic.Add("action", "addPlatformMaterial");
             dataDic.Add("merchantID", this.MerchantID);
             string data = string.Join("&", dataDic.Select(d => $"{d.Key}={d.Value}"));
-            string result = client.Request(this.ImportMaterialHost, HttpMethod.POST, data, Encoding.UTF8, "application/x-www-form-urlencoded");
-            var json = JsonDocument.Parse(result);
-            if (json.RootElement.GetProperty("OK").GetBoolean())
+            try
             {
-                this.Logger.Info($"{dataDic["productID"]}-{dataDic["materialName"]} 提交成功！");
-                return true;
+                string result = client.Request(this.ImportMaterialHost, HttpMethod.POST, data, Encoding.UTF8, "application/x-www-form-urlencoded");
+                var json = JsonDocument.Parse(result);
+                if (json.RootElement.GetProperty("OK").GetBoolean())
+                {
+                    this.Logger.Info($"{dataDic["productID"]}-{dataDic["materialName"]} 提交成功！");
+                    return true;
+                }
+                this.Logger.Info($"{dataDic["productID"]}-{dataDic["materialName"]} 提交失败！");
+            }
+            catch (Exception ex)
+            {
+                this.Logger.Error($"{dataDic["productID"]}-{dataDic["materialName"]} 提交异常！", ex);
             }
             this.SaveFile(data);
-            this.Logger.Info($"{dataDic["productID"]}-{dataDic["materialName"]} 提交失败！");
             return false;
         }
         protected List<string> UploadImgsByLink(params string[] links)
@@ -178,7 +190,7 @@ namespace HZ.Crawler.DataSpider
                 string base64Str = Convert.ToBase64String(new WebClient().DownloadData(item));
                 base64List.Add($"data:image/{ext};base64,{base64Str}");
             }
-            return UploadImgs(base64List.ToArray());
+            return UploadImgs(base64List.ToArray()).Result;
         }
         protected List<string> UploadImgsByFile(params string[] files)
         {
@@ -189,36 +201,65 @@ namespace HZ.Crawler.DataSpider
                 string base64Str = Convert.ToBase64String(FileHelper.ReadToBytes(item));
                 base64List.Add($"data:image/{ext};base64,{base64Str}");
             }
-            return UploadImgs(base64List.ToArray());
+            return UploadImgs(base64List.ToArray()).Result;
         }
         /// <summary>
         /// 上传图片
         /// </summary>
         /// <param name="base64Array"></param>
         /// <returns></returns>
-        protected List<string> UploadImgs(params string[] base64Array)
+        protected async Task<List<string>> UploadImgs(params string[] base64Array)
         {
             var imgList = new List<string>();
             if (base64Array == null || base64Array.Length == 0)
-            {
                 return imgList;
+            var imgModels = new ImgModel[base64Array.Length];
+            for (int i = 0; i < base64Array.Length; i++)
+            {
+                string md5 = Encrypt.ToMd5(base64Array[i], Encoding.UTF8);
+                var model = this.Context.ImgModels.FirstOrDefault(i => i.MD5Key == md5);//可能会有多个所以取第一个
+                //if (model == null)
+                //{
+                //    model = imgModels.FirstOrDefault(i => i.MD5Key == md5);
+                //}
+                imgModels[i] = model ?? new ImgModel
+                {
+                    MD5Key = md5,
+                    Base64 = base64Array[i]
+                };
+            }
+            var uploadList = imgModels.Where(i => string.IsNullOrEmpty(i.UploadedUrl)).ToList();
+            if (uploadList.Count == 0)
+            {
+                return imgModels.Select(i => i.UploadedUrl).ToList();
             }
             var client = HttpClientFactory.Create();
             var dataDic = new Dictionary<string, string>
             {
                 {"action","upfileImages"},
                 {"merchantID",this.MerchantID},
-                {"imgDataJson",Newtonsoft.Json.JsonConvert.SerializeObject(base64Array)}
+                {"imgDataJson",JsonConvert.SerializeObject(uploadList.Select(u=>u.Base64))}
             };
             string postData = string.Join("&", dataDic.Select(d => $"{d.Key}={d.Value.ToUrlEncode()}"));
             string result = client.Request(this.ImportMaterialHost, HttpMethod.POST, postData, Encoding.UTF8, "application/x-www-form-urlencoded");
             var root = JToken.Parse(result);
             if (root.Value<bool>("OK"))
             {
-                this.Logger.Info($"上传图片成功！");
-                imgList.AddRange(root["Message"].Values<string>());
+                int count = 0;
+                foreach (var item in root["Message"].Values<string>())
+                {
+                    uploadList[count].UploadedUrl = item;
+                    count++;
+                }
+                await this.Context.ImgModels.AddRangeAsync(uploadList.ToArray());
+                imgList.AddRange(imgModels.Select(i => i.UploadedUrl));
             }
             return imgList;
+        }
+        async Task SaveImgAsync(params ImgModel[] models)
+        {
+            await this.Context.ImgModels.AddRangeAsync(models);
+            await this.Context.SaveChangesAsync();
         }
     }
 }

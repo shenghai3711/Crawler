@@ -42,7 +42,7 @@ namespace HZ.Crawler.Common.Net
                 urlFormated = string.Format("{0}{1}{2}", url, url.IndexOf('?') > 0 ? "&" : "?", data);
             }
             HttpWebRequest req = CreateRequest(urlFormated);
-            Logger.Info(urlFormated);
+            Logger.Debug(urlFormated);
             if (!string.IsNullOrEmpty(HttpRequest.Accept))
             {
                 req.Accept = HttpRequest.Accept;
@@ -90,10 +90,9 @@ namespace HZ.Crawler.Common.Net
             {
                 if (!string.IsNullOrEmpty(data))
                 {
-                    Logger.Info(data);
+                    //Logger.Debug(data);
                 }
                 byte[] bytes = string.IsNullOrEmpty(data) ? new byte[] { } : encoding.GetBytes(data);
-
                 req.ContentLength = bytes.Length + (binaryData == null ? 0 : binaryData.Length);
                 Stream rs = req.GetRequestStream();
                 rs.Write(bytes, 0, bytes.Length);
@@ -168,7 +167,7 @@ namespace HZ.Crawler.Common.Net
             {
                 this.HttpResponse.Html = sr.ReadToEnd();
             }
-            Logger.Info(this.HttpResponse.Html);
+            //Logger.Debug(this.HttpResponse.Html);
             return this.HttpResponse.Html;
         }
 
@@ -270,7 +269,7 @@ namespace HZ.Crawler.Common.Net
                         using (StreamReader sr = new StreamReader(res.GetResponseStream(), encoding))
                         {
                             string result = sr.ReadToEnd();
-                            Logger.Info(result);
+                            Logger.Debug(result);
                             return result;
                         }
                     }
@@ -282,12 +281,12 @@ namespace HZ.Crawler.Common.Net
                     using (WebResponse response = e.Response)
                     {
                         HttpWebResponse httpResponse = (HttpWebResponse)response;
-                        Logger.Info($"Error code: {httpResponse.StatusCode}");
+                        Logger.Error($"Error code: {httpResponse.StatusCode}");
                         using (Stream responseData = response.GetResponseStream())
                         using (var reader = new StreamReader(responseData))
                         {
                             responseText = reader.ReadToEnd();
-                            Logger.Info(responseText);
+                            Logger.Error(responseText);
                         }
                     }
                     throw new WebException(string.IsNullOrEmpty(responseText) ? e.Status.ToString() : responseText, e);

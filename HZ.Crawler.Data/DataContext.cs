@@ -1,15 +1,14 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using HZ.Crawler.Model;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Debug;
 using System;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace HZ.Crawler.Data
 {
     public class DataContext : DbContext
     {
         private string CSName { get; set; }
-
         private DBTypeEnum? _dbType;
         private DBTypeEnum DBType
         {
@@ -31,14 +30,15 @@ namespace HZ.Crawler.Data
             this.CSName = configuration.GetConnectionString(nameof(this.CSName));
             this._dbType = configuration.GetValue<DBTypeEnum>(nameof(this.DBType));
         }
+        public DbSet<ImgModel> ImgModels { get; set; }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            ModelCreating(modelBuilder);
             foreach (var item in modelBuilder.Model.GetEntityTypes())
             {
                 //modelBuilder.Entity(item.Name).Property("Id").ValueGeneratedNever();//不自动增长
                 modelBuilder.Entity(item.Name).ToTable($"T_" + item.ClrType.Name);
             }
+            ModelCreating(modelBuilder);
             base.OnModelCreating(modelBuilder);
         }
         protected virtual void ModelCreating(ModelBuilder modelBuilder)
