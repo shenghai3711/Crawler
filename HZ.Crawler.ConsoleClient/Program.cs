@@ -27,7 +27,7 @@ namespace HZ.Crawler.ConsoleClient
             .AddOptions()
             .AddSingleton<IConfiguration>(config)//单例
             //.AddTransient<ILoggerFactory, LoggerFactory>()
-            .AddSingleton<DataContext, ShiweijiaContext>()
+            .AddTransient<DataContext, ShiweijiaContext>()
             .AddTransient<BaseSpider, ShiweijiaCategory>()
             .AddTransient<BaseSpider, ShiweijiaProduct>() //注入服务
             .BuildServiceProvider(); //编译

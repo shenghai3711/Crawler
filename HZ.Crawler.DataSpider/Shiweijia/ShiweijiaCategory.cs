@@ -9,17 +9,18 @@ using System.Text.Json;
 using System.Collections.Generic;
 using System.Net;
 using System.Linq;
+using HZ.Crawler.Model.Shiweijia;
 
 namespace HZ.Crawler.DataSpider
 {
     public class ShiweijiaCategory : BaseSpider
     {
         private IHttpClient Client { get; set; }
-        private ShiweijiaContext Context { get; }
+        BaseDataService<CategoryModel> DataService { get; }
         public ShiweijiaCategory(IConfiguration configuration, DataContext context)
         : base(configuration, context)
         {
-            this.Context = context as ShiweijiaContext;
+            this.DataService = new BaseDataService<CategoryModel>(context);
             this.Client = HttpClientFactory.Create();
             this.Client.HttpRequest.Accept = "application/json, text/plain, */*";
             this.Client.HttpRequest.Referer = "https://www.shiweijia.com/";
@@ -49,7 +50,7 @@ namespace HZ.Crawler.DataSpider
                 string result = this.Client.Request(url, HttpMethod.POST, data, Encoding.UTF8, "application/json;charset=UTF-8");
                 return result;
             }
-            catch (System.Exception)
+            catch (Exception)
             {//TODO:加载异常
                 return string.Empty;
             }
@@ -70,7 +71,7 @@ namespace HZ.Crawler.DataSpider
                     if (jsonElement.TryGetProperty("Data", out var elements))
                     {
                         ParseItem(elements.EnumerateArray(), null);
-                        this.Context.SaveChangesAsync();
+                        this.DataService.Commit();
                     }
                 }
             }
@@ -94,10 +95,10 @@ namespace HZ.Crawler.DataSpider
                     CategoryImg = item.GetProperty("CategoryImg").GetString(),
                     ParentId = parentId
                 };
-                if (!this.Context.CategoryModels.Any(c => c.Id == model.Id))
+                if (this.DataService.Query(c => c.Id == model.Id) == null)
                 {
                     model.CategoryImg = base.UploadImgsByLink(model.CategoryImg).FirstOrDefault();
-                    this.Context.CategoryModels.AddAsync(model);
+                    this.DataService.Add(model);
                 }
                 if (item.TryGetProperty("Subs", out var childs))
                 {

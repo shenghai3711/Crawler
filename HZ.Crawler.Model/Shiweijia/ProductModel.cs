@@ -5,8 +5,6 @@ namespace HZ.Crawler.Model.Shiweijia
 {
     public class ProductModel : BaseModel
     {
-        //[DatabaseGenerated(DatabaseGeneratedOption.None)]//不自动增长
-        //public new int Id { get; set; }
         /// <summary>
         /// 商品编号
         /// </summary>
@@ -33,9 +31,17 @@ namespace HZ.Crawler.Model.Shiweijia
         /// </summary>
         public string Name { get; set; }
         /// <summary>
-        /// 价格
+        /// 建议销售价
         /// </summary>
         public decimal SalePrice { get; set; }
+        /// <summary>
+        /// 供货价
+        /// </summary>
+        public decimal CostPrice { get; set; }
+        /// <summary>
+        /// 自定义销售价
+        /// </summary>
+        public decimal CustomPrice { get; set; }
         /// <summary>
         /// 显示图片(List<string>)
         /// </summary>

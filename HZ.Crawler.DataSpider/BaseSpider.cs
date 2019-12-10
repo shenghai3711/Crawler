@@ -20,7 +20,7 @@ namespace HZ.Crawler.DataSpider
 {
     public abstract class BaseSpider
     {
-        private DataContext Context { get; }
+        BaseDataService<ImgModel> DataService { get; }
         private IConfiguration Configuration { get; }
         private string ImportMaterialHost { get; }
         private string MerchantID { get; }
@@ -30,7 +30,7 @@ namespace HZ.Crawler.DataSpider
         {
             this.Logger = new Logger(this.GetType());
             this.Configuration = configuration;
-            this.Context = context;
+            this.DataService = new BaseDataService<ImgModel>(context);
             this.ImportMaterialHost = configuration.GetValue(nameof(this.ImportMaterialHost), string.Empty);
             this.MerchantID = configuration.GetValue(nameof(this.MerchantID), string.Empty);
             this.ThreadCount = configuration.GetValue(nameof(this.ThreadCount), 5);
@@ -112,27 +112,7 @@ namespace HZ.Crawler.DataSpider
         /// <param name="param"></param>
         /// <returns></returns>
         protected abstract string ParseSave(string html, string param = null);
-        /// <summary>
-        /// 保存数据
-        /// </summary>
-        /// <param name="isSave"></param>
-        /// <param name="ts"></param>
-        /// <typeparam name="T"></typeparam>
-        protected void SaveData<T>(bool isSave = true, params T[] ts) where T : BaseModel, new()
-        {
-            foreach (var t in ts)
-            {
-                this.Context.AddAsync(t);
-            }
-            if (isSave)
-            {
-                this.Context.SaveChangesAsync();
-            }
-        }
-        protected bool Exists<T>(T t) where T : BaseModel, new()
-        {
-            return this.Context.FindAsync<T>(t.Id) != null;
-        }
+
         /// <summary>
         /// 解析失败的保存
         /// </summary>
@@ -162,6 +142,8 @@ namespace HZ.Crawler.DataSpider
             try
             {
                 string result = client.Request(this.ImportMaterialHost, HttpMethod.POST, data, Encoding.UTF8, "application/x-www-form-urlencoded");
+                this.Logger.Debug(data);
+                this.Logger.Debug(result);
                 var json = JsonDocument.Parse(result);
                 if (json.RootElement.GetProperty("OK").GetBoolean())
                 {
@@ -187,10 +169,21 @@ namespace HZ.Crawler.DataSpider
                 {
                     ext = ext.Substring(0, ext.LastIndexOf('-'));
                 }
-                string base64Str = Convert.ToBase64String(new WebClient().DownloadData(item));
-                base64List.Add($"data:image/{ext};base64,{base64Str}");
+                for (int i = 0; i < 3; i++)
+                {
+                    try
+                    {
+                        string base64Str = Convert.ToBase64String(new WebClient().DownloadData(item));
+                        base64List.Add($"data:image/{ext};base64,{base64Str}");
+                        continue;
+                    }
+                    catch (Exception)
+                    {
+                        System.Threading.Thread.Sleep(3000);
+                    }
+                }
             }
-            return UploadImgs(base64List.ToArray()).Result;
+            return UploadImgs(base64List.ToArray());
         }
         protected List<string> UploadImgsByFile(params string[] files)
         {
@@ -201,14 +194,14 @@ namespace HZ.Crawler.DataSpider
                 string base64Str = Convert.ToBase64String(FileHelper.ReadToBytes(item));
                 base64List.Add($"data:image/{ext};base64,{base64Str}");
             }
-            return UploadImgs(base64List.ToArray()).Result;
+            return UploadImgs(base64List.ToArray());
         }
         /// <summary>
         /// 上传图片
         /// </summary>
         /// <param name="base64Array"></param>
         /// <returns></returns>
-        protected async Task<List<string>> UploadImgs(params string[] base64Array)
+        protected List<string> UploadImgs(params string[] base64Array)
         {
             var imgList = new List<string>();
             if (base64Array == null || base64Array.Length == 0)
@@ -217,11 +210,7 @@ namespace HZ.Crawler.DataSpider
             for (int i = 0; i < base64Array.Length; i++)
             {
                 string md5 = Encrypt.ToMd5(base64Array[i], Encoding.UTF8);
-                var model = this.Context.ImgModels.FirstOrDefault(i => i.MD5Key == md5);//可能会有多个所以取第一个
-                //if (model == null)
-                //{
-                //    model = imgModels.FirstOrDefault(i => i.MD5Key == md5);
-                //}
+                var model = this.DataService.Query(i => i.MD5Key == md5);
                 imgModels[i] = model ?? new ImgModel
                 {
                     MD5Key = md5,
@@ -251,15 +240,10 @@ namespace HZ.Crawler.DataSpider
                     uploadList[count].UploadedUrl = item;
                     count++;
                 }
-                await this.Context.ImgModels.AddRangeAsync(uploadList.ToArray());
+                this.DataService.AddRange(uploadList);
                 imgList.AddRange(imgModels.Select(i => i.UploadedUrl));
             }
             return imgList;
-        }
-        async Task SaveImgAsync(params ImgModel[] models)
-        {
-            await this.Context.ImgModels.AddRangeAsync(models);
-            await this.Context.SaveChangesAsync();
         }
     }
 }
