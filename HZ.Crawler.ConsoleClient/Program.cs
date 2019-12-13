@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Text;
+using System.Threading.Tasks;
 using HZ.Crawler.Data;
 using HZ.Crawler.DataSpider;
 using Microsoft.EntityFrameworkCore;
@@ -31,13 +32,14 @@ namespace HZ.Crawler.ConsoleClient
             .AddTransient<BaseSpider, ShiweijiaCategory>()
             .AddTransient<BaseSpider, ShiweijiaProduct>() //注入服务
             .BuildServiceProvider(); //编译
-
+            Task.Run(() => BaseSpider.Init(new DataContext(config))).GetAwaiter().GetResult();
             logger.Info("开始抓取");
             foreach (var spider in service.GetServices<BaseSpider>())
             {
-               spider.Run();
+                spider.Run();
             }
             logger.Info("抓取完成");
+            Task.Run(() => BaseSpider.Finish(new DataContext(config))).GetAwaiter().GetResult();
             Console.Read();
         }
     }

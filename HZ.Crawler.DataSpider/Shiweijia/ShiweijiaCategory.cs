@@ -5,22 +5,25 @@ using HZ.Crawler.Common.Net;
 using HZ.Crawler.Common.Extensions;
 using Microsoft.Extensions.Configuration;
 using System.Text;
-using System.Text.Json;
 using System.Collections.Generic;
 using System.Net;
 using System.Linq;
 using HZ.Crawler.Model.Shiweijia;
+using Microsoft.EntityFrameworkCore;
+using System.Threading.Tasks;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace HZ.Crawler.DataSpider
 {
     public class ShiweijiaCategory : BaseSpider
     {
         private IHttpClient Client { get; set; }
-        BaseDataService<CategoryModel> DataService { get; }
+        ShiweijiaContext Context { get; }
         public ShiweijiaCategory(IConfiguration configuration, DataContext context)
         : base(configuration, context)
         {
-            this.DataService = new BaseDataService<CategoryModel>(context);
+            this.Context = context as ShiweijiaContext;
             this.Client = HttpClientFactory.Create();
             this.Client.HttpRequest.Accept = "application/json, text/plain, */*";
             this.Client.HttpRequest.Referer = "https://www.shiweijia.com/";
@@ -38,7 +41,7 @@ namespace HZ.Crawler.DataSpider
             {
                 string reqTime = DateTime.Now.GetMilliseconds().ToString();
                 string sign = Encrypt.ToMd5($"AppId=9900&Nonce={this._Nonce}&ReqTime={reqTime}&TerminalType=web&TerminalVersion=lenovo", Encoding.UTF8).ToUpper();
-                string data = JsonSerializer.Serialize(new
+                string data = JsonConvert.SerializeObject(new
                 {
                     AppId = 9900,
                     ReqTime = reqTime,
@@ -60,49 +63,45 @@ namespace HZ.Crawler.DataSpider
         {
             try
             {
-                using (var jsonDoc = JsonDocument.Parse(html))
-                {
-                    var jsonElement = jsonDoc.RootElement;
-                    bool isSuccess = jsonElement.GetProperty("IsSuccess").GetBoolean();
-                    if (!isSuccess)
-                    {//TODO:请求失败
-                        return string.Empty;
-                    }
-                    if (jsonElement.TryGetProperty("Data", out var elements))
-                    {
-                        ParseItem(elements.EnumerateArray(), null);
-                        this.DataService.Commit();
-                    }
+                var root = JToken.Parse(html);
+                if (!root.Value<bool>("IsSuccess"))
+                {//TODO:请求失败
+                    Logger.Warn(root.Value<string>("Message"));
+                    return string.Empty;
                 }
+                ParseItem(root["Data"], null).GetAwaiter().GetResult();
+                this.Context.SaveChangesAsync();
             }
-            catch (System.Exception)
+            catch (Exception ex)
             {//TODO:解析异常
+                Logger.Error(ex: ex);
                 base.SaveFile(html);
             }
             return string.Empty;
         }
 
-        void ParseItem(JsonElement.ArrayEnumerator elements, int? parentId)
+        async Task ParseItem(JToken elements, int? parentId)
         {
             foreach (var item in elements)
             {
-                int id = item.GetProperty("ID").GetInt32();
-                string name = item.GetProperty("CategoryName").GetString();
+                int id = item.Value<int>("ID");
+                string name = item.Value<string>("CategoryName");
                 var model = new Model.Shiweijia.CategoryModel
                 {
                     Id = id,
                     CategoryName = name,
-                    CategoryImg = item.GetProperty("CategoryImg").GetString(),
+                    CategoryImg = item.Value<string>("CategoryImg"),
                     ParentId = parentId
                 };
-                if (this.DataService.Query(c => c.Id == model.Id) == null)
+                if (!await this.Context.CategoryModels.AnyAsync(c => c.Id == model.Id))
                 {
-                    model.CategoryImg = base.UploadImgsByLink(model.CategoryImg).FirstOrDefault();
-                    this.DataService.Add(model);
+                    model.CategoryImg = !string.IsNullOrEmpty(model.CategoryImg) ? base.UploadImgsByLink(model.CategoryImg).FirstOrDefault() : "";
+                    await this.Context.AddAsync(model);
+                    Logger.Info($"已添加更新 {model.CategoryName}");
                 }
-                if (item.TryGetProperty("Subs", out var childs))
+                if (item["Subs"] != null && item["Subs"].Count() > 0)
                 {
-                    ParseItem(childs.EnumerateArray(), id);
+                    await ParseItem(item["Subs"], id);
                 }
             }
         }

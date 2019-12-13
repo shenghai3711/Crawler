@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\HZ.Crawler.Common\HZ.Crawler.Common.csproj" />
     <ProjectReference Include="..\HZ.Crawler.Data\HZ.Crawler.Data.csproj" />
+    <ProjectReference Include="..\HZ.Crawler.RedisService\HZ.Crawler.RedisService.csproj" />
   </ItemGroup>
 
 </Project>

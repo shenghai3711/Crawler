@@ -13,6 +13,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HZ.Crawler.DataSpider", "HZ
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HZ.Crawler.ConsoleClient", "HZ.Crawler.ConsoleClient\HZ.Crawler.ConsoleClient.csproj", "{2F5D137F-A4A3-4E88-ADB7-AF2514C81DB9}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "HZ.Crawler.RedisService", "HZ.Crawler.RedisService\HZ.Crawler.RedisService.csproj", "{58FC3C44-B59E-409F-AEDF-B0B410C734CB}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -39,6 +41,10 @@ Global
 		{2F5D137F-A4A3-4E88-ADB7-AF2514C81DB9}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{2F5D137F-A4A3-4E88-ADB7-AF2514C81DB9}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{2F5D137F-A4A3-4E88-ADB7-AF2514C81DB9}.Release|Any CPU.Build.0 = Release|Any CPU
+		{58FC3C44-B59E-409F-AEDF-B0B410C734CB}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{58FC3C44-B59E-409F-AEDF-B0B410C734CB}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{58FC3C44-B59E-409F-AEDF-B0B410C734CB}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{58FC3C44-B59E-409F-AEDF-B0B410C734CB}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

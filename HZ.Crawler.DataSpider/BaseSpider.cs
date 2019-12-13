@@ -3,12 +3,15 @@ using HZ.Crawler.Common.Extensions;
 using HZ.Crawler.Common.Net;
 using HZ.Crawler.Data;
 using HZ.Crawler.Model;
+using HZ.Crawler.RedisService;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
@@ -20,36 +23,69 @@ namespace HZ.Crawler.DataSpider
 {
     public abstract class BaseSpider
     {
-        BaseDataService<ImgModel> DataService { get; }
         private IConfiguration Configuration { get; }
         private string ImportMaterialHost { get; }
         private string MerchantID { get; }
         private int ThreadCount { get; }
+        private DataContext Context { get; }
+        private bool _Sign = true;
         protected readonly Common.Logger Logger = null;
+        public static RedisHashService RedisClient { get; }
+        private static ConcurrentBag<ImgModel> ImgList { get; set; }
+        static BaseSpider()
+        {
+            RedisClient = new RedisHashService();
+            RedisClient.FlushAll();
+        }
         public BaseSpider(IConfiguration configuration, DataContext context)
         {
+            this.Context = context;
             this.Logger = new Logger(this.GetType());
             this.Configuration = configuration;
-            this.DataService = new BaseDataService<ImgModel>(context);
             this.ImportMaterialHost = configuration.GetValue(nameof(this.ImportMaterialHost), string.Empty);
             this.MerchantID = configuration.GetValue(nameof(this.MerchantID), string.Empty);
             this.ThreadCount = configuration.GetValue(nameof(this.ThreadCount), 5);
-            this.Logger.Info($"{this.GetType().Name}初始化成功，线程数量：{this.ThreadCount}");
+            this.Logger.Info($"{this.GetType().Name}初始化成功，设置线程数量：{this.ThreadCount}");
         }
+        public static async Task Init(DataContext context)
+        {
+            var imgList = await context.ImgModels.ToListAsync();
+            ImgList = new ConcurrentBag<ImgModel>(imgList);
+            // foreach (var item in imgList)
+            // {
+            //     RedisClient.SetEntryInHash(nameof(ImgModel), item.MD5Key, item.UploadedUrl);
+            // }
+            // context.ImgModels.RemoveRange(imgList);
+        }
+        public static async Task Finish(DataContext context)
+        {
+            // var imgList = RedisClient.GetAllEntriesFromHash(nameof(ImgModel)).Where(kv => !string.IsNullOrEmpty(kv.Value)).Select(kv => new ImgModel
+            // {
+            //     MD5Key = kv.Key,
+            //     UploadedUrl = kv.Value
+            // });
 
+            await context.ImgModels.AddRangeAsync(ImgList.Where(i => i.Id == 0));
+            await context.SaveChangesAsync();
+        }
         public void Run()
         {
             var config = new SpiderConfig();
+            Stopwatch watch = new Stopwatch();
             this.Configuration.GetSection(this.GetType().Name).Bind(config);
             //this.Configuration.GetValue<SpiderConfig>(this.GetType().Name);//反射不到数组
             this.Logger.Info($"{config.Name}开始采集");
+            watch.Start();
+            OnBegin();
             foreach (var host in config.Hosts)
             {
                 this.Logger.Info($"开始采集{config.Name}-{host}");
                 this.CrawleHost(host);
                 this.Logger.Info($"采集结束{config.Name}-{host}");
             }
-            this.Logger.Info($"{config.Name}采集结束");
+            OnEnd();
+            watch.Stop();
+            this.Logger.Info($"{config.Name}采集结束---用时：{watch.ElapsedMilliseconds / (1000 * 60.0)}/分");
         }
         private void CrawleHost(string host)
         {
@@ -57,9 +93,9 @@ namespace HZ.Crawler.DataSpider
             var taskList = new List<Task>();
             foreach (var item in this.InitSpider())
             {
+                taskList = taskList.Where(t => !t.IsCanceled && !t.IsCompleted && !t.IsFaulted).ToList();
                 if (taskList.Count >= this.ThreadCount)//线程数量达到
                 {
-                    taskList = taskList.Where(t => !t.IsCanceled && !t.IsCompleted && !t.IsFaulted).ToList();
                     Task.WaitAny(taskList.ToArray());//等待完成一个
                 }
                 else
@@ -67,8 +103,11 @@ namespace HZ.Crawler.DataSpider
                 string temp = item;
                 taskList.Add(Task.Run(() =>
                 {
-                    this.Logger.Info($"开启线程【{System.Threading.Thread.CurrentThread.ManagedThreadId}】");
+                    this.Logger.Info($"***************************************************************************");
+                    this.Logger.Info($"开启线程，线程ID：【{System.Threading.Thread.CurrentThread.ManagedThreadId}】");
                     TaskRun(url, temp);
+                    this.Logger.Info($"结束线程，线程ID：【{System.Threading.Thread.CurrentThread.ManagedThreadId}】");
+                    this.Logger.Info($"***************************************************************************");
                 }));
             }
             Task.WaitAll(taskList.ToArray());//等待所有完成
@@ -83,7 +122,7 @@ namespace HZ.Crawler.DataSpider
                 {
                     html = this.LoadHTML(url, param);
                 }
-                catch (System.Exception ex)
+                catch (Exception ex)
                 {
                     this.Logger.Error($"加载数据异常", ex);
                 }
@@ -92,7 +131,7 @@ namespace HZ.Crawler.DataSpider
                 {
                     url = this.ParseSave(html, param);
                 }
-                catch (System.Exception ex)
+                catch (Exception ex)
                 {
                     this.SaveFile(html);
                     this.Logger.Error($"解析数据异常", ex);
@@ -104,6 +143,30 @@ namespace HZ.Crawler.DataSpider
         {
             return new List<string> { string.Empty };
         }
+        protected void OnBegin()
+        {
+            Begin();
+            Task.Run(() =>
+            {
+                do
+                {
+                    if (ImgList.Where(i => i.Id == 0).Count() > 10)
+                    {
+                        this.Context.ImgModels.AddRangeAsync(ImgList.Where(i => i.Id == 0));
+                        this.Context.SaveChangesAsync();
+                    }
+                    Task.Delay(3000);
+                } while (_Sign);
+            });
+
+        }
+        protected void OnEnd()
+        {
+            End();
+            _Sign = false;
+        }
+        protected virtual void Begin() { }
+        protected virtual void End() { }
         protected abstract string LoadHTML(string url, string param = null);
         /// <summary>
         /// 解析保存并返回下一页链接
@@ -141,8 +204,8 @@ namespace HZ.Crawler.DataSpider
             string data = string.Join("&", dataDic.Select(d => $"{d.Key}={d.Value}"));
             try
             {
-                string result = client.Request(this.ImportMaterialHost, HttpMethod.POST, data, Encoding.UTF8, "application/x-www-form-urlencoded");
                 this.Logger.Debug(data);
+                string result = client.Request(this.ImportMaterialHost, HttpMethod.POST, data, Encoding.UTF8, "application/x-www-form-urlencoded");
                 this.Logger.Debug(result);
                 var json = JsonDocument.Parse(result);
                 if (json.RootElement.GetProperty("OK").GetBoolean())
@@ -162,7 +225,7 @@ namespace HZ.Crawler.DataSpider
         protected List<string> UploadImgsByLink(params string[] links)
         {
             var base64List = new List<string>();
-            foreach (var item in links)
+            foreach (var item in links.Where(l => !string.IsNullOrEmpty(l)))
             {//图片转base64
                 string ext = item.Substring(item.LastIndexOf(".") + 1);
                 if (ext.Contains("-"))
@@ -175,7 +238,7 @@ namespace HZ.Crawler.DataSpider
                     {
                         string base64Str = Convert.ToBase64String(new WebClient().DownloadData(item));
                         base64List.Add($"data:image/{ext};base64,{base64Str}");
-                        continue;
+                        break;
                     }
                     catch (Exception)
                     {
@@ -210,7 +273,8 @@ namespace HZ.Crawler.DataSpider
             for (int i = 0; i < base64Array.Length; i++)
             {
                 string md5 = Encrypt.ToMd5(base64Array[i], Encoding.UTF8);
-                var model = this.DataService.Query(i => i.MD5Key == md5);
+                //string uploadedUrl = RedisClient.GetValueFromHash(nameof(ImgModel), md5);
+                var model = ImgList.FirstOrDefault(i => i.MD5Key == md5);//await this.Context.ImgModels.FirstOrDefaultAsync(i => i.MD5Key == md5);
                 imgModels[i] = model ?? new ImgModel
                 {
                     MD5Key = md5,
@@ -238,9 +302,14 @@ namespace HZ.Crawler.DataSpider
                 foreach (var item in root["Message"].Values<string>())
                 {
                     uploadList[count].UploadedUrl = item;
+                    ImgList.Add(new ImgModel
+                    {
+                        UploadedUrl = item,
+                        MD5Key = uploadList[count].MD5Key
+                    });
+                    //RedisClient.SetEntryInHash(nameof(ImgModel), uploadList[count].MD5Key, uploadList[count].UploadedUrl);
                     count++;
                 }
-                this.DataService.AddRange(uploadList);
                 imgList.AddRange(imgModels.Select(i => i.UploadedUrl));
             }
             return imgList;

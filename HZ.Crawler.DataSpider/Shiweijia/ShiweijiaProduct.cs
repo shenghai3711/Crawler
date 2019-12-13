@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -12,6 +13,7 @@ using HZ.Crawler.Common.Extensions;
 using HZ.Crawler.Common.Net;
 using HZ.Crawler.Data;
 using HZ.Crawler.Model.Shiweijia;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
 namespace HZ.Crawler.DataSpider
@@ -19,16 +21,16 @@ namespace HZ.Crawler.DataSpider
     public class ShiweijiaProduct : BaseSpider
     {
         private IHttpClient Client { get; }
-        BaseDataService<ProductModel> ProductDataService { get; }
-        BaseDataService<CategoryModel> CategoryDataService { get; }
-        BaseDataService<BrandModel> BrandDataService { get; }
-        private IList<CategoryModel> CategoryList { get; set; }
+        private ConcurrentBag<CategoryModel> CategoryList { get; set; }
+        private ConcurrentBag<BrandModel> BrandList { get; set; }
+        private ConcurrentBag<ProductModel> ProductList { get; set; }
+        private IConfiguration Configuration { get; }
+        ShiweijiaContext Context { get; }
         public ShiweijiaProduct(IConfiguration configuration, DataContext context)
         : base(configuration, context)
         {
-            this.ProductDataService = new BaseDataService<ProductModel>(context);
-            this.CategoryDataService = new BaseDataService<CategoryModel>(context);
-            this.BrandDataService = new BaseDataService<BrandModel>(context);
+            this.Configuration = configuration;
+            this.Context = context as ShiweijiaContext;
             this.Client = HttpClientFactory.Create();
             this.Client.HttpRequest.Accept = "application/json, text/plain, */*";
             this.Client.HttpRequest.Referer = "https://www.shiweijia.com/";
@@ -42,11 +44,30 @@ namespace HZ.Crawler.DataSpider
         private string _Nonce = string.Empty;
         private string _ProductUrl = "https://api.shiweijia.com/api/Mall/QueryProductByPage";
         private string _ProductDetailUrl = "https://api.shiweijia.com/api/Product/GetProductDetail";
-        private int _PageSize = 100;
+        private int _PageSize = 50;
         protected override List<string> InitSpider()
         {
-            this.CategoryList = this.CategoryDataService.QueryList(c => 1 == 1);
-            return this.CategoryList.OrderByDescending(c => c.CategoryName).Where(c => c.ParentId != null).Select(c => c.Id.ToString()).ToList();
+            return this.CategoryList.OrderBy(c => c.UpdateDate).Where(c => c.ParentId != null).Select(c => c.Id.ToString()).ToList();
+        }
+        protected override void Begin()
+        {
+            this.ProductList = new ConcurrentBag<ProductModel>();
+            this.CategoryList = new ConcurrentBag<CategoryModel>(this.Context.CategoryModels.ToList());
+            this.BrandList = new ConcurrentBag<BrandModel>(this.Context.BrandModels.ToList());
+            this.Context.BrandModels.RemoveRange(this.BrandList);
+        }
+        protected override void End()
+        {
+            foreach (var item in this.ProductList.GroupBy(p => p.CategoryId))
+            {
+                var childCategory = this.CategoryList.FirstOrDefault(c => c.Id == item.Key);
+                var category = this.CategoryList.FirstOrDefault(c => c.Id == childCategory.ParentId);
+                this.Logger.Info($"{category.CategoryName}-{childCategory.CategoryName} 共抓取到{item.Count()}件");
+            }
+            this.Context.BrandModels.AddRangeAsync(this.BrandList);
+            this.Context.ProductModels.RemoveRange(this.ProductList);
+            this.Context.ProductModels.AddRangeAsync(this.ProductList);
+            this.Context.SaveChangesAsync();
         }
         protected override string LoadHTML(string url, string param = null)
         {
@@ -96,11 +117,10 @@ namespace HZ.Crawler.DataSpider
                 if (jsonElement.TryGetProperty("Data", out var dataElement) && dataElement.TryGetProperty("Rows", out var rowElement))
                 {
                     var resultList = ParseItem(rowElement.EnumerateArray(), categoryId);
-                    //base.SaveData(ts: resultList.ToArray());
                     int pageIndex = dataElement.GetProperty("PageIndex").GetInt32();
                     int total = dataElement.GetProperty("Total").GetInt32();
                     int pageCount = Convert.ToInt32(Math.Ceiling(total / Convert.ToDouble(this._PageSize)));
-                    return pageIndex > pageCount ? string.Empty : (pageIndex + 1).ToString();
+                    return pageIndex >= pageCount ? string.Empty : (pageIndex + 1).ToString();
                 }
             }
             return string.Empty;
@@ -121,6 +141,8 @@ namespace HZ.Crawler.DataSpider
                 {
                     var products = GetAllProductDetail(item.GetProperty("ID").GetInt32(), categoryId);
                     list.AddRange(products);
+                    // this.Context.ProductModels.AddRangeAsync(list);
+                    // this.Context.SaveChangesAsync();
                 }
                 catch (Exception ex)
                 {
@@ -146,9 +168,9 @@ namespace HZ.Crawler.DataSpider
                     ProductModel product = null;
                     (product, allProductIds) = GetProductDetail(productId, nonce);
                     product.CategoryId = categoryId;
+                    this.ProductList.Add(product);
                     products.Add(product);
-                    this.ImportMaterial(product);
-                    this.ProductDataService.Commit();
+                    this.Submit(product);
                 }
                 catch (Exception ex)
                 {
@@ -204,7 +226,7 @@ namespace HZ.Crawler.DataSpider
         Tuple<ProductModel, List<int>> ParseProduct(JsonElement dataElement)
         {
             int brandId = dataElement.GetProperty("BrandId").GetInt32();
-            var brand = this.BrandDataService.Query(b => b.Id == brandId);
+            var brand = this.BrandList.FirstOrDefault(b => b.Id == brandId);
             if (brand == null)
             {//上传图片，并替换实体
                 brand = new BrandModel
@@ -214,7 +236,7 @@ namespace HZ.Crawler.DataSpider
                     BrandImg = dataElement.GetProperty("BrandImg").GetString(),
                 };
                 brand.BrandImg = base.UploadImgsByLink(brand.BrandImg).FirstOrDefault();
-                this.BrandDataService.Add(brand);
+                this.BrandList.Add(brand);
             }
             var product = new ProductModel
             {
@@ -362,7 +384,12 @@ namespace HZ.Crawler.DataSpider
              return JsonSerializer.Serialize(resultList, options: new JsonSerializerOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.Create(UnicodeRanges.All) });
          };
 
-        void ImportMaterial(ProductModel product)
+        /// <summary>
+        /// 提交
+        /// </summary>
+        /// <param name="product"></param>
+        /// <returns></returns>
+        bool Submit(ProductModel product)
         {
             this.Logger.Info($"开始提交{product.Id}-{product.Name}");
             var childCategory = this.CategoryList.FirstOrDefault(c => c.Id == product.CategoryId);
@@ -380,13 +407,14 @@ namespace HZ.Crawler.DataSpider
                 pics = base.UploadImgsByLink(mainImgs.ToArray());
             }
             product.MainImgs = Newtonsoft.Json.JsonConvert.SerializeObject(pics);
+            //product.Id = Convert.ToInt32($"{childCategory.ParentId.Value}{ childCategory.Id}{product.Id}");
             var dataDic = new Dictionary<string, string>
                 {
                     {"platformType","1"},
                     {"materialTypeID","5"},
                     {"typeID","3"},//固定
                     {"productCode",product.ProductCode},
-                    {"productID",product.Id.ToString()},
+                    {"productID", product.Id.ToString()},
                     {"materialName",product.Name},
                     {"categoryName",category.CategoryName},
                     {"categoryCoverPath",category.CategoryImg},
@@ -402,15 +430,7 @@ namespace HZ.Crawler.DataSpider
                     {"materialPicture",product.MainImgs},//产品多图json
                     {"materialDetails",GetProductDetails(product)}//产品介绍
                 };
-            base.SubmitProduct(dataDic);
-            var dbProduct = this.ProductDataService.Query(p => p.Id == product.Id);
-            if (dbProduct != null)
-            {
-                //如果直接修改会出现异常，个人理解：因为对象没有被上下文标记，所以需要修改查询出的对象
-                //var oldProduct = this.Context.ProductModels.AsNoTracking().FirstAsync(p => p.Id == product.Id).Result;
-                this.ProductDataService.Delete(p => p.Id == dbProduct.Id);//直接删除，后添加。无后顾之忧
-            }
-            this.ProductDataService.Add(product);
+            return base.SubmitProduct(dataDic);
         }
         string GetProductDetails(Model.Shiweijia.ProductModel product)
         {
@@ -441,7 +461,7 @@ namespace HZ.Crawler.DataSpider
         }
         List<string> GetImgStr(string productCode, string folderName)
         {
-            //指定文件夹(可以配置)
+            //TODO:指定文件夹(可以配置)
             string path = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "ProductPic", productCode, folderName);
             //读取文件--->上传
             if (!Directory.Exists(path))
@@ -466,7 +486,7 @@ namespace HZ.Crawler.DataSpider
                 });
                 return Newtonsoft.Json.JsonConvert.SerializeObject(attributes);
             }
-            catch (System.Exception) { }
+            catch (Exception) { }
             return string.Empty;
         }
     }
